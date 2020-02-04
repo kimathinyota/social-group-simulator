@@ -37,16 +37,16 @@ class ServiceGUI:
                 args = request['args']
                 if code == 1:
                     self.service_draw_interaction_request(args[0], args[1])
-                    self.gui.display(1, 30)
+                    self.gui.display(0.25, 30)
                 elif code == 2:
                     self.service_end_interaction_request(args[0])
-                    self.gui.display(0.25, 30)
+                    self.gui.display(0.1, 30)
                 elif code == 3:
                     self.service_update_hierarchy_request(args[0])
-                    self.gui.display(0.25, 30)
+                    self.gui.display(0.1, 30)
                 elif code == 4:
                     self.service_update_personalities_request(args[0])
-                    self.gui.display(0.25, 30)
+                    self.gui.display(0.1, 30)
 
                 self.requestsList.remove(request)
 

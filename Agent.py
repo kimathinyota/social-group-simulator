@@ -3,52 +3,91 @@ import time
 
 
 class Agent:
+
     # d = dimension-list-of-raw-facet-scores [d1,d2,d3,d4,d5,d6]
     # where d ∈ [n,e,o,c,a] = [Neuroticism,Extraversion,Openness,Conscientiousness,Agreeableness]
     # 0 <= raw-facet-score <= 35
 
     def __init__(self, n, e, o, c, a, name):
+        # creates map from personality facets (e.g. 'N1' or 'C3') to score
         self.personality = personality_dictionary(n, e, o, c, a)
+
+        # assigned social group
         self.social_group = None
+
+        # is agent free (F) or busy (B) for interactions
         self.state = 'F'
+
+        # list of all agents this agent is currently interacting with
         self.interacting_agents = []
+
+        # maps agents to status {respect, influence, prominence, estimated-personality}
         self.agents_status = {}
+
         self.name = name
+
+        self.number_of_interactions = 0
 
     def set_social_group(self, social_group):
         self.social_group = social_group
 
+    def __repr__(self):
+        return self.name
+
     def action(self):
+        # based on the personality it will generate an action by applying a probability distribution
+        # to each personality facet score
         return action_from_personality(self.personality)
 
+    # prominence is just a count of how many times this agent has interacted with the input agent
+    # this will return the percentage of agents that it has a greater (or equal) comparative prominence
     def prominence_agent(self, agent):
+        # never interacted with this agent
         if agent not in self.agents_status:
             return 0
 
         if len(self.agents_status) == 1:
             return 1
 
-        tot = 0
+        # retrieve current prominence
         agent_prominence = self.agents_status[agent]['p']
+
+        return self.prominence_percentage(agent_prominence)
+
+    # returns percentage of agents that this value is >= to
+    def prominence_percentage(self, prominence):
+        if len(self.agents_status) == 0:
+            return 1
+        tot = 0
         for a in self.agents_status:
-            if a != agent and agent_prominence > self.agents_status[a]['p']:
+            if prominence >= self.agents_status[a]['p']:
                 tot += 1
+        # find percentage
+        return tot / (len(self.agents_status))
 
-        return tot/len(self.agents_status)
-
+    # return status of agent as a score s, where 0 <= s <= 3
     def status_agent(self, agent):
         if agent not in self.agents_status:
             return 0
         influence = self.agents_status[agent]['i']
         prominence = self.prominence_agent(agent)
         respect = self.agents_status[agent]['r']
+
+        if influence is None or respect is None:
+            return None
         return influence+prominence+respect
 
+    # will use similarity, extraversion and agreeableness percentage to
+    # determine whether this agent will accept the interaction request from input agent
     def interact_accept(self, agent):
         if self.state == 'B':
             return False
 
+        # if this agent hasn't met input, it will just assume they are very similar
         similarity = 1
+
+        # will find the estimated personality for the input agent based on their actions
+        # find cosine similarity between this agent's personality and the input agent
         if agent in self.agents_status:
             agent_personality = self.agents_status[agent]['a']
             similarity = personality_similarity(self.personality, agent_personality)
@@ -56,13 +95,19 @@ class Agent:
         extraversion = dimension_percentage(self.personality, 'E')
         agreeableness = dimension_percentage(self.personality, 'A')
 
-        score = 2*(similarity*2 + extraversion*2 + similarity)
+        # ratio of 2:2:1 for similarity:extraversion:agreeableness chosen ...
+        # this ratio will define the importance in those factors in influencing the probability that this agent accepts
+
+        # score will positively correlate with probability of the agent requesting an interacting
+        score = 2*(similarity*2 + extraversion*2 + agreeableness)
         random_score = apply_prob_distribution(score, 55, 7.5, 7)
         if random_score < 3.5:
             return False
 
         return True
 
+    # will use openness and agreeableness percentage to
+    # determine whether this agent will decide to request an interaction
     def request_interaction(self):
         if self.state == 'B':
             return False
@@ -70,84 +115,144 @@ class Agent:
         openness = dimension_percentage(self.personality, 'O')
 
         score = openness * 5 + extraversion * 5
+        # score will positively correlate with probability of the agent requesting an interacting
         random_score = apply_prob_distribution(score, 55, 7.5, 7)
         if random_score < 3.5:
             return False
 
         return True
 
+    # appraisal = difference in status after last interaction with the agent
+    def appraisal(self, agent):
+        if agent not in self.agents_status:
+            return 0
+
+        p = self.agents_status[agent]['l']
+        c = self.status_agent(agent)
+
+        r = c - p
+
+        return r
+
     def start_interaction(self, agent):
         self.state = 'B'
         self.interacting_agents.append(agent)
-        self.interaction_start_time = time.time()
+        self.number_of_interactions += 1
 
-    def end_interaction(self):
-        self.state = 'F'
-        if len(self.interacting_agents) == 0:
-            pass
+    def request_appraisal(self, agent):
+        if agent not in self.agents_status:
+            return 0
+        return self.agents_status - 1
 
-        for agent in self.interacting_agents:
-            action = agent.action()
-            respect_observed = personality_facet_similarity(action, self.social_group.wanted_group_values,
+    def observed_respect(self, action):
+        # respect is calculated using the similarity between the agent's action and a 'high-status'
+        # action based on the wanted and unwanted personality facets
+        return personality_facet_similarity(action, self.social_group.wanted_group_values,
                                                             self.social_group.unwanted_group_values)
-            influence_observed = personality_facet_similarity(action, self.social_group.dominant_values,
-                                                              self.social_group.non_dominant_values)
 
+    def observed_influence(self, action):
+        # influence is calculated using the similarity between the agent's action and a 'dominant'
+        # action based on the dominant and non-dominant personality facets
+        return personality_facet_similarity(action, self.social_group.dominant_values,
+                                            self.social_group.non_dominant_values)
+
+    # will end an interaction and update its current view of the statuses of the agents it interacted with
+    def end_interaction(self):
+
+        if len(self.interacting_agents) == 0:
+            self.state = 'F'
+            return
+
+        # these are the agents it is interacting with
+        for agent in self.interacting_agents:
+
+            # get the observed action of the current agent
+            action = self.social_group.get_action_during_interaction(self, agent)
+
+            respect_observed = self.observed_respect(action)
+
+            influence_observed = self.observed_influence(action)
+
+            # check if agent has interacted with this agent before
             if agent in self.agents_status:
+                # get current values that make up the current agent's status
                 status_old = self.agents_status[agent]
                 respect_old = status_old['r']
                 influence_old = status_old['i']
                 prominence_old = status_old['p']
+
+                # action_old is essentially an estimate of the current agent's personality
                 action_old = status_old['a']
 
+                # update old values with current observations using below weight
                 weight = logistic_update_status_weight(prominence_old, 0.8, 0.1, 20)
-                respect_new = weight*respect_old + respect_observed*(1-weight)
-                influence_new = weight * influence_old + influence_observed * (1 - weight)
-                prominence_new = prominence_old + 1
-                action_new = estimate_personality(action_old, action, weight)
 
-                status_new = {'r': respect_new, 'i': influence_new, 'p': prominence_new, 'a': action_new}
+                if respect_old is None:
+                    respect_new = respect_observed
+                    respect_old = respect_observed
+                else:
+                    respect_new = weight * respect_old + respect_observed * (1 - weight)
+
+                if influence_old is None:
+                    influence_new = influence_observed
+                    influence_old = influence_observed
+                else:
+                    influence_new = weight * influence_old + influence_observed * (1 - weight)
+
+                last_status = respect_old + influence_old + self.prominence_percentage(prominence_old)
+
+                prominence_new = prominence_old + 1
+
+                if action is not None:
+                    action_new = estimate_personality(action_old, action, weight)
+
+                status_new = {'r': respect_new, 'i': influence_new, 'p': prominence_new, 'a': action_new, 'l': last_status }
 
                 self.agents_status[agent] = status_new
+
             else:
-                status_new = {'r': respect_observed, 'i': influence_observed, 'p': 1, 'a': action}
+                last_status = respect_observed + influence_observed + self.prominence_percentage(1)
+                status_new = {'r': respect_observed, 'i': influence_observed, 'p': 1, 'a': action, 'l': last_status}
                 self.agents_status[agent] = status_new
 
         self.interacting_agents = []
-        self.interaction_start_time = None
+        # now free for interactions
+        self.state = 'F'
 
+    # agent running
     def run(self, social_group, lock):
         social_group.add_agent(self)
-        #print("Agent " + self.name + ": Starting"
-
         while True:
             if self.state == 'F':
+                # determine whether agent should request an interaction
                 attempt_interaction = self.request_interaction()
                 if attempt_interaction == True:
+                    # agent decided to request interaction so it will use social_group.find_agent to do this
 
                     lock.acquire()
-                    found_agent = social_group.find_agent(self)
+                    #found_agent = social_group.find_agent(self)
+
+                    isFound = social_group.find_and_start_interactions(self)
+
+                    if isFound == True:
+                        time.sleep(0.25)
+
                     lock.release()
-                    if found_agent != None:
-                        social_group.start_interactions(self, found_agent)
-                        time.sleep(2)
 
+                    #if found_agent != None:
+                    #    social_group.start_interactions(self, found_agent)
+                    #    time.sleep(2)
             else:
-
-              social_group.end_interaction(self)
-
-
-def random_agent(name):
-    bigfive = []
-    for x in range(1, 6):
-        temp = []
-        for y in range(1, 7):
-            temp.append(random.randrange(1, 34))
-        bigfive.append(temp)
-    return Agent(bigfive[0], bigfive[1], bigfive[2], bigfive[3], bigfive[4], name)
+                social_group.end_interaction(self)
 
 
-#n, e, o, c, a
+
+
+
+
+
+
+
 def get_best_agent(name, wanted_values, unwanted_values):
     dimensions = ['N','E','O','C','A']
     bigfive = []
@@ -156,20 +261,13 @@ def get_best_agent(name, wanted_values, unwanted_values):
         for n in range(1,7):
             f = d + str(n)
             if f in wanted_values:
-                temp.append(random.randrange(25,35))
+                temp.append(random.randrange(25, 35))
             elif f in unwanted_values:
-                temp.append(random.randrange(1,10))
+                temp.append(random.randrange(1, 10))
             else:
                 temp.append(random.randrange(1, 34))
         bigfive.append(temp)
     return Agent(bigfive[0], bigfive[1], bigfive[2], bigfive[3], bigfive[4], name)
-
-
-
-
-
-
-
 
 
 

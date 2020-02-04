@@ -1,6 +1,7 @@
 from scipy import spatial
 import random
 import math
+import numpy as np
 
 
 def personality_dictionary(n, e, o, c, a):
@@ -126,3 +127,108 @@ def estimate_personality(action_old, action_observed, weight):
     return action_new
 
 
+def get_5d_action_space(incr):
+    action_space = []
+    for a in [-incr, incr]:
+        for b in [-incr, incr]:
+            for c in [-incr, incr]:
+                for d in [-incr, incr]:
+                    for e in [-incr, incr]:
+                        action_space.append([a, b, c, d, e])
+    return action_space
+
+
+def get_actions_space(c):
+    arr = []
+    for d in range(5):
+        for f in range(6):
+            x = np.array(np.zeros([5, 6]))
+            x[d][f] = c
+            arr.append(x)
+    return arr
+
+
+def apply_action_to_personality(personality, action, factor):
+    personality_new = {}
+    dimension = ['N', 'E', 'O', 'C', 'A']
+    for i in range(0, 5):
+        d = dimension[i]
+        for x in range(1, 7):
+            f = d + str(x)
+            personality_new[f] = int(min(personality[f] + factor*action[i][x-1], 35))
+    return personality_new
+
+
+def subtract_action_from_personality(personality, action, factor):
+    personality_new = {}
+    dimension = ['N', 'E', 'O', 'C', 'A']
+    for i in range(0, 5):
+        d = dimension[i]
+        for x in range(1, 7):
+            f = d + str(x)
+            personality_new[f] = int(max(personality[f] - factor*action[i][x-1], 0))
+    return personality_new
+
+
+
+
+
+def retrieve_personality_facets_from_action(action):
+    facets = []
+    dimension = ['N', 'E', 'O', 'C', 'A']
+    for i in range(0, 5):
+        d = dimension[i]
+        for x in range(1, 7):
+            f = d + str(x)
+            n = action[i][x - 1]
+            if n > 0:
+                facets.append(f)
+    return facets
+
+
+def retrieve_personality_facets(actions):
+    facets = []
+    for a in actions:
+        facets = facets + retrieve_personality_facets_from_action(a)
+    return facets
+
+
+def apply_5d_action_to_personality(personality, action_5d):
+    personality_new = {}
+
+    # n, e, o, c, a
+    dimension = ['N', 'E', 'O', 'C', 'A']
+
+    for i in range(0, 5):
+        d = dimension[i]
+        for x in range(1, 7):
+            f = d + + str(x)
+            personality_new[f] = int(min(personality[f] + action_5d[i], 35))
+
+    return personality_new
+
+
+def compress_personality(personality,size):
+    n = round(dimension_percentage(personality,'N')*size)
+    e = round(dimension_percentage(personality, 'E')*size)
+    o = round(dimension_percentage(personality, 'O')*size)
+    c = round(dimension_percentage(personality, 'C')*size)
+    a = round(dimension_percentage(personality, 'A')*size)
+    return [n,e,o,c,a]
+
+
+def personality_score(personality, size):
+    n = (dimension_percentage(personality, 'N') * size)
+    e = (dimension_percentage(personality, 'E') * size)
+    o = (dimension_percentage(personality, 'O') * size)
+    c = (dimension_percentage(personality, 'C') * size)
+    a = (dimension_percentage(personality, 'A') * size)
+    return int(round(n + e + o + c + a))
+
+
+def contains_arr(action, actions):
+    for i in range(len(np.asarray(actions))):
+        equal = (actions[i] == action).all()
+        if equal:
+            return True
+    return False

@@ -245,15 +245,13 @@ class SocialGroupGUI:
             self.remove_components(self.hierarchy_canvas[p])
             self.hierarchy_canvas[p].clear()
 
-
     def remove_interaction(self, key):
         if key not in self.agent_canvas:
             pass
         self.remove_components(self.agent_canvas[key])
 
     def remove_components(self, components):
-        for x in components:
-            x.undraw()
+        for x in components:            x.undraw()
 
     def set_social_hierarchy(self, agentToStatus):
         sorted_x = sorted(agentToStatus.items(), key=operator.itemgetter(1))
@@ -269,9 +267,7 @@ class SocialGroupGUI:
 
     def set_agent_personality_list(self, agents):
         self.clear_personality_canvas()
-        print("Agent: ")
         for a in agents:
-            print(a.name)
             self.draw_agent_personality(a.name, a.personality)
 
 
