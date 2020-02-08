@@ -1,5 +1,6 @@
 from src.Helper import *
 import time
+import uuid
 
 
 class Agent:
@@ -25,6 +26,7 @@ class Agent:
         self.agents_status = {}
 
         self.name = name
+        self.id = uuid.uuid1()
 
         self.number_of_interactions = 0
 
