@@ -2,6 +2,8 @@ import operator
 import random
 from src.graphics import *
 import math
+import src.Interaction
+import enum
 
 
 
@@ -94,6 +96,41 @@ class SocialGroupGUI:
         # Interaction -> [ Agent
         self.interactions = {}
 
+        green = color_rgb(112, 173, 71)
+        blue = color_rgb(47, 85, 151)
+        red = color_rgb(255, 0, 0)
+        length = 20
+
+        friendship_template = ArrowLineTemplate(2.5, green,
+                                                          ArrowHeadTemplate(ArrowType.line, green, 2.5, 15),
+                                                          ArrowHeadTemplate(ArrowType.line, green, 2.5, 15))
+        mentorship_template = ArrowLineTemplate(2.5, blue,
+                                                ArrowHeadTemplate(ArrowType.line, blue, 2.5, 15),
+                                                ArrowHeadTemplate(ArrowType.line, blue, 2.5, 15))
+
+        help_template = ArrowLineTemplate(2.5, green,
+                                                ArrowHeadTemplate(ArrowType.none, green, 2.5, 15),
+                                                ArrowHeadTemplate(ArrowType.line, green, 2.5, 15))
+
+        theft_template = ArrowLineTemplate(2.5, red,
+                                                ArrowHeadTemplate(ArrowType.none, red, 2.5, 15),
+                                                ArrowHeadTemplate(ArrowType.line, red, 2.5, 15))
+
+        # Type -> (colour, length, width, angle,  (on_first_point, is_line_type), (on_second_point, is_line_type) )
+        self.interaction_type_display = {src.Interaction.Friendship: friendship_template,
+                                         src.Interaction.Mentorship: mentorship_template,
+                                         src.Interaction.Help: help_template,
+                                         src.Interaction.Theft: theft_template}
+
+        self.mine_arrow_line_template = ArrowLineTemplate(2.5, color_rgb(0, 0, 0),
+                                                          ArrowHeadTemplate(ArrowType.none, color_rgb(0, 0, 0), 2.5, 15),
+                                                          ArrowHeadTemplate(ArrowType.line, color_rgb(0, 0, 0), 2.5, 15))
+
+
+
+
+
+
         # Agent -> { components: [componentlist], radius: radius}
         self.agent_to_components_info = {}
 
@@ -154,23 +191,46 @@ class SocialGroupGUI:
 
 
 
-    def draw_arrow_head(self, p1, p2,deg,length, colour, width, is_line_type ):
-        deg = math.radians(deg)
+    def rotate_point(self, pivot_point, angle, point):
+        xr, yr = point.x, point.y
 
-        if (p2.y - p1.y) == 0:
-            a = math.radians(0) if p2.x > p1.x else math.radians(180)
-        else:
-            a = math.atan((p2.x - p1.x) / (p2.y - p1.y))
+        angle = math.radians(angle)
+        s = math.sin(angle)
+        c = math.cos(angle)
 
-        p3 = Point(p1.x + length * math.cos(a + deg), p2.y + length * math.sin(a + deg))
-        p4 = Point(p1.x + length * math.cos(a - deg), p2.y + length * math.sin(a - deg))
+        # translate point back to origin
+        px = xr - pivot_point.x
+        py = yr - pivot_point.y
 
-        if is_line_type:
-            return self.draw_lined_arrow_head(p1,p3,p4,colour,width)
+        #rotate point
+        xnew = px * c - py * s
+        ynew = px * s + py * c
 
-        return self.draw_filled_arrow_head(p1,p3,p4,colour,width)
+        # translate point back from origin
+        px = xnew + pivot_point.x
+        py = ynew + pivot_point.y
+
+        return Point(px,py)
+
+    def point_on_line(self, p1, p2, length):
+        a = length / math.sqrt(math.pow(p2.y - p1.y, 2) + math.pow(p2.x - p1.x, 2))
+        point = Point(p1.x + a * (p2.x - p1.x), p1.y + a * (p2.y - p1.y))
+        return point
 
 
+
+
+    def draw_arrow_head(self, p1, p2, template):
+        point = self.point_on_line(p1, p2, template.length)
+        p3 = self.rotate_point(p1, 45, point)
+        p4 = self.rotate_point(p1, -45, point)
+
+        if template.arrow_type.name == 'line':
+            return self.draw_lined_arrow_head(p1,p3,p4,template.colour,template.width)
+        elif template.arrow_type.name == 'triangle':
+            return self.draw_filled_arrow_head(p1,p3,p4,template.colour,template.width)
+
+        return []
 
 
     def draw_lined_arrow_head(self,p1,p3,p4, colour, width):
@@ -204,6 +264,7 @@ class SocialGroupGUI:
         poly.setFill(colour)
 
         poly.setWidth(width)
+        poly.setOutline(color_rgb(0,200,0))
 
         poly.draw(self.win)
 
@@ -211,45 +272,25 @@ class SocialGroupGUI:
 
         return components
 
-
-
-    def draw_arrow_line(self, p1, p2, length, on_first_point, on_second_point, deg, colour, width,is_line_type):
-
+    def draw_arrow_line(self, p1, p2, template):
         components = []
         line = Line(p1, p2)
-        line.setFill(colour)
-        line.setWidth(width)
+        line.setFill(template.colour)
+        line.setWidth(template.width)
         line.draw(self.win)
         components.append(line)
 
-        if on_first_point:
-            components += self.draw_arrow_head(p1,p2,deg,length,colour,width,is_line_type)
+        components += self.draw_arrow_head(p1,p2,template.first_arrow_head)
 
-        if on_second_point:
-            components += self.draw_arrow_head(p2,p1,deg,length,colour,width,is_line_type)
+        components += self.draw_arrow_head(p2,p1,template.second_arrow_head)
 
         return components
 
 
-
-    def draw_mine_arrow(self, p1, p2, on_first_point, on_second_point):
-        #l = math.sqrt( int(abs(x2 - x))^2 + int(abs(y2 - y))^2)
-
-        l = math.sqrt(int(abs(p2.x - p1.x)) ^ 2 + int(abs(p2.y - p1.y)) ^ 2)
-
-        print(l)
-        r = 10*l * 0.25
-        deg = 45
-        colour = color_rgb(0, 0, 0)
-        width = 2.5
-        is_line_type = True
-        return self.draw_arrow_line(p1,p2,r,on_first_point,on_second_point,deg,colour,width,is_line_type)
-
-
-    def draw_wealth_arrow(self, p1, p2, text, on_first_point, on_second_point):
+    def draw_wealth_arrow(self, p1, p2, text):
         x = (p1.x + p2.x)/2
         y = p1.y - 25
-        arrow = self.draw_mine_arrow(p1,p2,on_first_point,on_second_point)
+        arrow = self.draw_mine_arrow(p1,p2,self.mine_arrow_line_template)
         label = Text(Point(x, y), text)
         label.setSize(18)
         label.setTextColor("black")
@@ -259,6 +300,10 @@ class SocialGroupGUI:
         arrow.append(label)
 
         return arrow
+
+
+
+
 
     def move_independent_agent(self, agent, radius, x, y):
         # Agent -> { components: [componentlist], radius: radius, interactions: [InteractionList] }
@@ -280,13 +325,14 @@ class SocialGroupGUI:
     def get_interaction_window_boundaries(self, independent_agents, radius=35, padding=10):
         sep = radius*2 + padding
         x = self.x - self.resource_width
-        xt = x = 1.5*sep
+        xt = x - 1.5*sep
         nxt, nx, ny = int(xt / sep), int(x / sep), int(self.y / sep)
         z = nxt + nx + ny
         n = int(len(independent_agents) / z)
         rem = len(independent_agents) - n*z
 
-        wx, wy1 = n*sep
+        print(nxt,nx,ny)
+        wx, wy1 = n*sep, n*sep
         wy2 = self.y - n*sep
 
         if rem > 0:
@@ -319,7 +365,7 @@ class SocialGroupGUI:
         nx = int(x / sep)
 
         # number of agents that can fit at the left edge
-        ny = int(self.y / sep)
+        ny = int((self.y - sep) / sep)
 
         # try to fit as many agents around the edge
 
@@ -348,7 +394,7 @@ class SocialGroupGUI:
             sublist = independent_agents[index:end]
             # for each agent in sublist - move agent to correct position
             tx = sep / 2 + sep * count
-            ty = sep / 2
+            ty = sep + sep / 2
             for i in range(len(sublist)):
                 agent = sublist[i]
                 self.move_independent_agent(agent, ideal_diameter / 2,tx,ty)
@@ -391,7 +437,7 @@ class SocialGroupGUI:
 
                 #components += self.draw_adv_agent(agent.name, x, y, r) +  self.draw_mine_arrow(Point(ax, y),Point(ax2, y),False, True)
 
-                components += self.move_independent_agent(agent,r,x,y) + self.draw_mine_arrow(Point(ax, y), Point(ax2, y), False, True)
+                components += self.move_independent_agent(agent,r,x,y) + self.draw_mine_arrow(Point(ax, y), Point(ax2, y), self.mine_arrow_line_template)
 
             update(rate)
             self.remove_components(components)
@@ -424,7 +470,7 @@ class SocialGroupGUI:
                 wealth = agentsWealth[i][1]
 
                 #components += self.draw_adv_agent(agent.name,x,y,r) + self.draw_wealth_arrow( Point(ax,y),Point(ax2,y),("+" + str(wealth)), False,True)
-                components += self.move_independent_agent(agent,r,x,y) + self.draw_wealth_arrow(Point(ax, y), Point(ax2, y), ("+" + str(wealth)), False, True)
+                components += self.move_independent_agent(agent,r,x,y) + self.draw_wealth_arrow(Point(ax, y), Point(ax2,y), ("+" + str(wealth)))
             update(rate)
             self.remove_components(components)
 
@@ -520,9 +566,6 @@ class SocialGroupGUI:
         components = components + ag1 + ag2
 
         self.agent_canvas[key] = components
-
-
-
 
     def draw_adv_agent(self,name,x,y,r):
         components = []
@@ -622,59 +665,197 @@ class SocialGroupGUI:
             pass
         self.remove_components(self.agent_canvas[key])
 
-
-    def draw_single_interaction(self, interaction, p1, p2, radius=35):
+    def get_angle(self,p1,p2):
         if (p2.y - p1.y) == 0:
             a = math.radians(0) if p2.x > p1.x else math.radians(180)
         else:
             a = math.atan((p2.x - p1.x) / (p2.y - p1.y))
-        a2 = math.radians(90) - a
-        np1 = Point(p1.x + radius*math.cos(a), p1.y + radius*math.sin(a))
-        np2 = Point(p2.x + radius * math.cos(a2), p2.y + radius * math.sin(a2))
+        return a
+
+
+
+
+
+    def draw_single_interaction(self, interaction, p1, p2, radius=35):
+        a1 = self.get_angle(p1,p2)
+        a2 = self.get_angle(p2,p1)
+        print("angle",a1,a2)
+
+        np1 = self.point_on_line(p1,p2,radius)
+        np2 = self.point_on_line(p2,p1,radius)
+
+
+        #np1 = Point(p1.x + radius*math.cos(a1), p1.y + radius*math.sin(a1))
+        #np2 = Point(p2.x + radius * math.cos(a2), p2.y + radius * math.sin(a2))
 
         components = []
-        components += self.draw_adv_agent(interaction.reactive_agent(),p1.x,p1.y,radius)
-        components += self.draw_adv_agent(interaction.proactive_agent(), p2.x, p2.y, radius)
-        components += self.draw_arrow_line(np1,np2,15,False,True)
+
+        components += self.move_independent_agent(interaction.get_reactive_agent(),radius, p1.x,p1.y)
+        components += self.move_independent_agent(interaction.get_proactive_agent(), radius, p2.x, p2.y)
+
+        template = self.interaction_type_display[type(interaction)]
+
+        l1 = template.first_arrow_head.length
+        l2 = template.second_arrow_head.length
+        tp1 = self.point_on_line(np1, np2, 2 * l1)
+        tp2 = self.point_on_line(np2, np1, 2 * l2)
+
+
+        components += self.draw_arrow_line(np1,np2,template)
+
+
+        size = 15
+
+        if interaction.requires_acceptance:
+            accepted_agent = interaction.get_accepted_agent()
+            if accepted_agent is not None:
+                if interaction.is_success:
+                    text = "ACCEPTED"
+                    colour = color_rgb(0,255,0)
+                else:
+                    text = "REJECTED"
+                    colour = color_rgb(255, 0, 0)
+
+                respond_point = tp2
+                if interaction.get_reactive_agent() == interaction.get_requested_agent():
+                    respond_point, request_point = tp1
+
+                components.append(self.get_text(respond_point, text, size, colour, "arial", "bold"))
+
+        else:
+            if isinstance(interaction,src.Interaction.Help):
+                funds = str(interaction.helping_funds)
+                components.append(self.get_text(tp2,"+" + funds,size,"black","arial","bold"))
+
+
+            elif isinstance(interaction,src.Interaction.Theft):
+                funds = str(interaction.stolen_funds)
+                if interaction.is_caught:
+                    components.append(self.get_text(tp2, "0", size, "black", "arial", "bold"))
+                    components.append(self.get_text(tp1, "caught", size, "red", "arial", "bold"))
+
+                components.append(self.get_text(tp2, "-" + funds, size, "black", "arial", "bold"))
+
+        return components
+
+
+    def get_text(self, point, text, size, colour, font, style):
+        label = Text(point, text)
+        label.setSize(size)
+        label.setTextColor(colour)
+        label.setFace(font)
+        label.setStyle(style)
+        label.draw(self.win)
+        return label
+
+    def display_interaction(self, interactions, independent_agents, radius=20, padding=10):
+        independent_agents = [u[0] for u in independent_agents]
+        self.draw_independent_agents(independent_agents,radius,padding)
+
+        bx, by1, by2 = self.get_interaction_window_boundaries(independent_agents, radius, padding)
+        bx2 = self.x - self.resource_width
+        sep = (radius * 2 + padding)
+
+        #wx, wx2 = sep / 2 + bx, bx2 - sep / 2
+        #wy1, wy2 = sep / 2 + by1, by2 - sep / 2
+
+        wx, wx2 = bx, bx2
+        wy1,wy2 = by1, by2
+
+        components = []
+
+        asep = 2*radius
+
+        bsep = 2*radius
+        isep = 110
+
+        ws = asep + isep + bsep
+
+        nwx = int( (wx2 - wx) / ws)
+        nwy = int((wy2 - wy1) / ws)
+
+        factor = min(((wx2 - wx) - ws*nwx)/nwx, ((wy2 - wy1) - ws*nwy)/nwy)
+
+        print(factor)
+
+        asep += factor
+
+        ws = asep + isep + bsep
+
+        print( ws )
+
+        print ("Hey", int( (wx2 - wx) / ws) )
+
+
+        #factor = min(((wx2 - wx) - ws)/nwx,  ((wy2 - wy1) - ws)/nwy)
+
+
+
+        print("Hi", asep, isep, nwx, nwy)
+
+
+        remaining_blocks = [(x, y) for x in range(nwx) for y in range(nwy)]
+
+        print( "rb", remaining_blocks)
 
 
 
 
+        for i in range(len(interactions)):
+            interaction = interactions[i]
 
-    def display_interaction(self, interactions, independent_agents, radius=35, padding=10):
-        wx, wy1, wy2 = self.get_interaction_window_boundaries(independent_agents,radius,padding)
+            if len(remaining_blocks) == 0:
+                break
 
-        sep = 5*(radius*2)
-        winx = (self.x - self.resource_width) - wx
-        winy = wy2 - wy1
+            index = random.randrange(len(remaining_blocks))
 
-        x = int(winx / sep)
-        y = int(winy / sep)
 
-        partx = sep + (winx - x*sep)/x if x > 0 else winx
-        party = sep + (winy - y * sep) / y if y > 0 else winy
+            x,y = remaining_blocks[index]
+            remaining_blocks.pop(index)
 
-        nx, ny = int(winx / partx), int(winy / party)
+            sx, sy = wx + x*ws, wy1 + y*sep
+            sx2, sy2 = sx + ws, sy + ws
 
-        for i in range(1,len(interactions)+1):
-            interaction = interactions[i-1]
+            rec = Rectangle(Point(sx, sy), Point(sx2, sy2))
+            rec.setFill(color_rgb(200, 0, 0))
+            rec.draw(self.win)
 
-            by = int(i / nx)
-            bx = i % nx
 
-            # window coordinates
-            x1, y1 = wx + bx*partx, wy1 + by*party
-            x2, y2 = x1 + partx, y1 + partx
+
+            x1 = (sx+bsep/2, sx+bsep/2 + asep/2)
+
+            x2 = (sx+bsep/2 + asep/2 + isep, sx2-bsep/2)
+            x3 = (sx+bsep/2, sx2-bsep/2)
+
+            y1 = (sy+bsep/2, sy + bsep/2 + asep/2)
+            y2 = (sy + bsep/2 + isep + asep/2, sy2 - bsep/2)
+            y3 = (sy + bsep/2, sy2 - bsep/2)
+
+            print( "Bro", x1, x2, x3, y1, y2, y3)
+
+            strategies = [((x1, x2), (y3, y3)), ((x2, x1), (y3, y3)),
+                          ((x3, x3), (y1, y2)), ((x3, x3), (y2, y1))]
+
+            strat = strategies[random.randrange(len(strategies))]
+
+
+            rec = Rectangle(Point(strat[0][0][0],strat[1][0][0]), Point(strat[0][0][1],strat[1][0][1]))
+            rec.setFill("blue")
+            rec.draw(self.win)
+
+            rec = Rectangle(Point(strat[0][1][0], strat[1][1][0]), Point(strat[0][1][1], strat[1][1][1]))
+            rec.setFill("blue")
+            rec.draw(self.win)
+
+
 
             # draw interaction at random position in this window
-            p1 = (random.randrange(x1, x2), random.randrange(y1, y2))
+            p1 = Point(random.randrange(int(strat[0][0][0]), int(strat[0][0][1])), random.randrange(int(strat[1][0][0]), int(strat[1][0][1])))
 
-            potentialx = [x for x in range(int(x1, x2)) if radius < x < x2 - radius and
-                          (x < (p1[0]-2*radius) or x > (p1[0]+2*radius))]
-            potentialy = [y for y in range(int(y1, y2)) if radius < y < y2 - radius and
-                          (y < (p1[1]-2*radius) or y > (p1[1]+2*radius))]
+            # draw interaction at random position in this window
+            p2 = Point(random.randrange(int(strat[0][1][0]), int(strat[0][1][1])), random.randrange(int(strat[1][1][0]), int(strat[1][1][1])))
 
-            p2 = (potentialx[random.randrange(len(potentialx))], potentialy[random.randrange(len(potentialy))])
+            components += self.draw_single_interaction(interaction,p1,p2,radius)
 
 
 
@@ -691,28 +872,64 @@ class SocialGroupGUI:
 
 
 
+    def display_interaction2(self, interactions, independent_agents, radius=35, padding=10):
+
+        independent_agents = [u[0] for u in independent_agents]
+        self.draw_independent_agents(independent_agents)
+
+
+        bx, by1, by2 = self.get_interaction_window_boundaries(independent_agents,radius,padding)
+        bx2 = self.x - self.resource_width
+        sep = (radius*2 + padding)
+
+        wx, wx2 = sep/2 + bx, bx2 - sep/2
+        wy1, wy2 = sep/2 + by1, by2 - sep/2
+
+        padding *= 2
+        inner_block = 4*radius
+
+        sep = inner_block + padding
+
+        nx = int((wx2 - wx) / sep)
+        ny = int((wy2 - wy1) / sep)
+        remaining_blocks = [ (x,y) for x in range(nx) for y in range(ny) ]
+
+        rec = Rectangle(Point(bx,by1),Point(bx2,by2))
+
+        rec.setFill(color_rgb(200,0,0))
+
+        rec.draw(self.win)
+
+        components = []
+
+        for i in range(len(interactions)):
+            interaction = interactions[i]
+
+            index = random.randrange(len(remaining_blocks))
+            x,y = remaining_blocks[index]
+            remaining_blocks.pop(index)
+
+            sx, sy = wx + x*sep + padding*2, wy1 + y*sep + padding*2
+
+            sx2, sy2 = sx + sep - padding*2, sy + sep - padding*2
 
 
 
+            # draw interaction at random position in this window
+            p1 = Point(random.randrange(int(sx), int(sx2)), random.randrange(int(sy), int(sy2)))
 
+            index = random.randrange(len(remaining_blocks))
+            x, y = remaining_blocks[index]
+            remaining_blocks.pop(index)
 
+            sx, sy = wx + x * sep + padding * 2, wy1 + y * sep + padding * 2
 
+            sx2, sy2 = sx + sep - padding * 2, sy + sep - padding * 2
 
+            # draw interaction at random position in this window
+            p2 = Point(random.randrange(int(sx), int(sx2)), random.randrange(int(sy), int(sy2)))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            components += self.draw_single_interaction(interaction,p1,p2,radius)
 
 
 
@@ -740,3 +957,23 @@ class SocialGroupGUI:
 
 
 
+class ArrowType(enum.Enum):
+    line = 1
+    triangle = 2
+    none = 3
+
+
+class ArrowLineTemplate:
+    def __init__(self, width, colour, first_arrow_head, second_arrow_head):
+        self.width = width
+        self.colour = colour
+        self.first_arrow_head = first_arrow_head
+        self.second_arrow_head = second_arrow_head
+
+
+class ArrowHeadTemplate:
+    def __init__(self, arrow_type, colour, width, length):
+        self.arrow_type = arrow_type
+        self.colour = colour
+        self.width = width
+        self.length = length
