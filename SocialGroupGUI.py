@@ -93,7 +93,7 @@ class SocialGroupGUI:
         label.setStyle("normal")
         label.draw(self.win)
 
-        # Interaction -> [ Agent
+        # Interaction -> [components]
         self.interactions = {}
 
         green = color_rgb(112, 173, 71)
@@ -290,7 +290,9 @@ class SocialGroupGUI:
     def draw_wealth_arrow(self, p1, p2, text):
         x = (p1.x + p2.x)/2
         y = p1.y - 25
-        arrow = self.draw_mine_arrow(p1,p2,self.mine_arrow_line_template)
+
+
+        arrow = self.draw_arrow_line(p1,p2,self.mine_arrow_line_template)
         label = Text(Point(x, y), text)
         label.setSize(18)
         label.setTextColor("black")
@@ -300,9 +302,6 @@ class SocialGroupGUI:
         arrow.append(label)
 
         return arrow
-
-
-
 
 
     def move_independent_agent(self, agent, radius, x, y):
@@ -322,7 +321,7 @@ class SocialGroupGUI:
 
         return components
 
-    def get_interaction_window_boundaries(self, independent_agents, radius=35, padding=10):
+    def get_interaction_window_boundaries(self, independent_agents, radius=20, padding=10):
         sep = radius*2 + padding
         x = self.x - self.resource_width
         xt = x - 1.5*sep
@@ -351,7 +350,7 @@ class SocialGroupGUI:
 
 
 
-    def draw_independent_agents(self, independent_agents, radius=35, padding=10):
+    def draw_independent_agents(self, independent_agents, radius=20, padding=10):
         x = self.x - self.resource_width
         ideal_diameter = radius*2
         padding = padding
@@ -437,7 +436,7 @@ class SocialGroupGUI:
 
                 #components += self.draw_adv_agent(agent.name, x, y, r) +  self.draw_mine_arrow(Point(ax, y),Point(ax2, y),False, True)
 
-                components += self.move_independent_agent(agent,r,x,y) + self.draw_mine_arrow(Point(ax, y), Point(ax2, y), self.mine_arrow_line_template)
+                components += self.move_independent_agent(agent,r,x,y) + self.draw_arrow_line(Point(ax, y), Point(ax2, y), self.mine_arrow_line_template)
 
             update(rate)
             self.remove_components(components)
@@ -489,10 +488,10 @@ class SocialGroupGUI:
             update(rate)
             self.remove_components(components)
 
-    def test_display(self,agentWealth):
+    def test_display(self,agentWealth, interactions):
         sY = 40
         rate = 30
-        r = 35
+        r = 20
         seperationY = 80
         #self.display_mine_animations(r,agentWealth,sY,seperationY,rate, 1.6)
         #self.display_mine_animation(agentWealth,rate, 2)
@@ -501,7 +500,16 @@ class SocialGroupGUI:
         b = {u: [] for u in keys}
         self.draw_independent_agents(keys)
         self.display(3, rate)
-        self.display_mine_animation(agentWealth, rate, 2)
+        components = self.display_interaction(interactions,keys)
+        self.display(3, rate)
+        self.clear_interactions()
+        self.draw_independent_agents(keys)
+        self.display(1, rate)
+
+        #self.set_social_hierarchy()
+
+
+        self.display_mine_animation(agentWealth, rate, 1.6)
 
 
 
@@ -510,7 +518,7 @@ class SocialGroupGUI:
 
 
 
-    def display_mine_animation(self, agentsToWealth, rate, speed):
+    def display_mine_animation(self, agentsToWealth, rate, speed, radius = 20):
         agentHeight = 70
         paddingHeight = 10
         seperationY = agentHeight + paddingHeight
@@ -526,7 +534,7 @@ class SocialGroupGUI:
 
 
             index = end
-            self.display_mine_animations(35,sublist,seperationY/2,seperationY,rate,speed)
+            self.display_mine_animations(radius,sublist,seperationY/2,seperationY,rate,speed)
 
 
             self.draw_independent_agents(aw[0:end])
@@ -578,7 +586,7 @@ class SocialGroupGUI:
         components.append(circle)
 
         label = Text(Point(x, y), name)
-        label.setSize(18)
+        label.setSize(int(20*r/35))
         label.setTextColor("black")
         label.setFace("arial")
         label.setStyle("bold")
@@ -660,10 +668,14 @@ class SocialGroupGUI:
             self.remove_components(self.hierarchy_canvas[p])
             self.hierarchy_canvas[p].clear()
 
-    def remove_interaction(self, key):
-        if key not in self.agent_canvas:
-            pass
-        self.remove_components(self.agent_canvas[key])
+
+    def remove_interaction(self, interaction):
+        if interaction in self.interactions:
+            self.remove_components(self.interactions[interaction])
+
+    def clear_interactions(self):
+        for interaction in self.interactions:
+            self.remove_components(self.interactions[interaction])
 
     def get_angle(self,p1,p2):
         if (p2.y - p1.y) == 0:
@@ -676,7 +688,7 @@ class SocialGroupGUI:
 
 
 
-    def draw_single_interaction(self, interaction, p1, p2, radius=35):
+    def draw_single_interaction(self, interaction, p1, p2, radius=20):
         a1 = self.get_angle(p1,p2)
         a2 = self.get_angle(p2,p1)
         print("angle",a1,a2)
@@ -710,10 +722,10 @@ class SocialGroupGUI:
             accepted_agent = interaction.get_accepted_agent()
             if accepted_agent is not None:
                 if interaction.is_success:
-                    text = "ACCEPTED"
+                    text = "ACCEPTOR"
                     colour = color_rgb(0,255,0)
                 else:
-                    text = "REJECTED"
+                    text = "REJECTOR"
                     colour = color_rgb(255, 0, 0)
 
                 respond_point = tp2
@@ -749,26 +761,17 @@ class SocialGroupGUI:
         return label
 
     def display_interaction(self, interactions, independent_agents, radius=20, padding=10):
-        independent_agents = [u[0] for u in independent_agents]
+        #independent_agents = [u[0] for u in independent_agents]
         self.draw_independent_agents(independent_agents,radius,padding)
 
         bx, by1, by2 = self.get_interaction_window_boundaries(independent_agents, radius, padding)
         bx2 = self.x - self.resource_width
-        sep = (radius * 2 + padding)
-
-        #wx, wx2 = sep / 2 + bx, bx2 - sep / 2
-        #wy1, wy2 = sep / 2 + by1, by2 - sep / 2
 
         wx, wx2 = bx, bx2
         wy1,wy2 = by1, by2
 
         components = []
-
-        asep = 2*radius
-
-        bsep = 2*radius
-        isep = 110
-
+        asep, bsep, isep = 2*radius, 2*radius, 110
         ws = asep + isep + bsep
 
         nwx = int( (wx2 - wx) / ws)
@@ -776,30 +779,13 @@ class SocialGroupGUI:
 
         factor = min(((wx2 - wx) - ws*nwx)/nwx, ((wy2 - wy1) - ws*nwy)/nwy)
 
-        print(factor)
-
         asep += factor
 
         ws = asep + isep + bsep
 
-        print( ws )
-
-        print ("Hey", int( (wx2 - wx) / ws) )
-
-
-        #factor = min(((wx2 - wx) - ws)/nwx,  ((wy2 - wy1) - ws)/nwy)
-
-
-
-        print("Hi", asep, isep, nwx, nwy)
-
-
         remaining_blocks = [(x, y) for x in range(nwx) for y in range(nwy)]
 
-        print( "rb", remaining_blocks)
-
-
-
+        interactions_not_displayed = interactions.copy()
 
         for i in range(len(interactions)):
             interaction = interactions[i]
@@ -807,23 +793,20 @@ class SocialGroupGUI:
             if len(remaining_blocks) == 0:
                 break
 
+            interactions_not_displayed.remove(interaction)
+
             index = random.randrange(len(remaining_blocks))
-
-
             x,y = remaining_blocks[index]
             remaining_blocks.pop(index)
 
-            sx, sy = wx + x*ws, wy1 + y*sep
+            sx, sy = wx + x*ws, wy1 + y*ws
             sx2, sy2 = sx + ws, sy + ws
 
-            rec = Rectangle(Point(sx, sy), Point(sx2, sy2))
-            rec.setFill(color_rgb(200, 0, 0))
-            rec.draw(self.win)
-
-
+            # rec = Rectangle(Point(sx, sy), Point(sx2, sy2))
+            # rec.setFill(color_rgb(200, 0, 0))
+            # rec.draw(self.win)
 
             x1 = (sx+bsep/2, sx+bsep/2 + asep/2)
-
             x2 = (sx+bsep/2 + asep/2 + isep, sx2-bsep/2)
             x3 = (sx+bsep/2, sx2-bsep/2)
 
@@ -831,23 +814,17 @@ class SocialGroupGUI:
             y2 = (sy + bsep/2 + isep + asep/2, sy2 - bsep/2)
             y3 = (sy + bsep/2, sy2 - bsep/2)
 
-            print( "Bro", x1, x2, x3, y1, y2, y3)
-
             strategies = [((x1, x2), (y3, y3)), ((x2, x1), (y3, y3)),
                           ((x3, x3), (y1, y2)), ((x3, x3), (y2, y1))]
 
             strat = strategies[random.randrange(len(strategies))]
 
-
-            rec = Rectangle(Point(strat[0][0][0],strat[1][0][0]), Point(strat[0][0][1],strat[1][0][1]))
-            rec.setFill("blue")
-            rec.draw(self.win)
-
-            rec = Rectangle(Point(strat[0][1][0], strat[1][1][0]), Point(strat[0][1][1], strat[1][1][1]))
-            rec.setFill("blue")
-            rec.draw(self.win)
-
-
+            # rec = Rectangle(Point(strat[0][0][0],strat[1][0][0]), Point(strat[0][0][1],strat[1][0][1]))
+            # rec.setFill("blue")
+            # rec.draw(self.win)
+            # rec = Rectangle(Point(strat[0][1][0], strat[1][1][0]), Point(strat[0][1][1], strat[1][1][1]))
+            # rec.setFill("blue")
+            # rec.draw(self.win)
 
             # draw interaction at random position in this window
             p1 = Point(random.randrange(int(strat[0][0][0]), int(strat[0][0][1])), random.randrange(int(strat[1][0][0]), int(strat[1][0][1])))
@@ -855,83 +832,11 @@ class SocialGroupGUI:
             # draw interaction at random position in this window
             p2 = Point(random.randrange(int(strat[0][1][0]), int(strat[0][1][1])), random.randrange(int(strat[1][1][0]), int(strat[1][1][1])))
 
-            components += self.draw_single_interaction(interaction,p1,p2,radius)
 
+            self.interactions[interaction] = self.draw_single_interaction(interaction,p1,p2,radius)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def display_interaction2(self, interactions, independent_agents, radius=35, padding=10):
-
-        independent_agents = [u[0] for u in independent_agents]
-        self.draw_independent_agents(independent_agents)
-
-
-        bx, by1, by2 = self.get_interaction_window_boundaries(independent_agents,radius,padding)
-        bx2 = self.x - self.resource_width
-        sep = (radius*2 + padding)
-
-        wx, wx2 = sep/2 + bx, bx2 - sep/2
-        wy1, wy2 = sep/2 + by1, by2 - sep/2
-
-        padding *= 2
-        inner_block = 4*radius
-
-        sep = inner_block + padding
-
-        nx = int((wx2 - wx) / sep)
-        ny = int((wy2 - wy1) / sep)
-        remaining_blocks = [ (x,y) for x in range(nx) for y in range(ny) ]
-
-        rec = Rectangle(Point(bx,by1),Point(bx2,by2))
-
-        rec.setFill(color_rgb(200,0,0))
-
-        rec.draw(self.win)
-
-        components = []
-
-        for i in range(len(interactions)):
-            interaction = interactions[i]
-
-            index = random.randrange(len(remaining_blocks))
-            x,y = remaining_blocks[index]
-            remaining_blocks.pop(index)
-
-            sx, sy = wx + x*sep + padding*2, wy1 + y*sep + padding*2
-
-            sx2, sy2 = sx + sep - padding*2, sy + sep - padding*2
-
-
-
-            # draw interaction at random position in this window
-            p1 = Point(random.randrange(int(sx), int(sx2)), random.randrange(int(sy), int(sy2)))
-
-            index = random.randrange(len(remaining_blocks))
-            x, y = remaining_blocks[index]
-            remaining_blocks.pop(index)
-
-            sx, sy = wx + x * sep + padding * 2, wy1 + y * sep + padding * 2
-
-            sx2, sy2 = sx + sep - padding * 2, sy + sep - padding * 2
-
-            # draw interaction at random position in this window
-            p2 = Point(random.randrange(int(sx), int(sx2)), random.randrange(int(sy), int(sy2)))
-
-            components += self.draw_single_interaction(interaction,p1,p2,radius)
-
-
+            #Interaction -> [components]
+        return interactions_not_displayed
 
     def remove_components(self, components):
         for x in components:
