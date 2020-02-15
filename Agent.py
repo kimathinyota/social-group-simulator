@@ -1,17 +1,38 @@
 from src.Helper import *
 import time
 import uuid
+from src.Interaction import *
+
+
+class Competency:
+
+    def random_competency(self, accuracy):
+        return Competency(accuracy_value(self.mining_skill,accuracy),
+                          accuracy_value(self.appraisal_skill,accuracy))
+
+    def contains_greater_competency_skill(self, competency):
+        return self.mining_skill > competency.mining_skill or self.appraisal_skill > competency.appraisal_skill
+
+    def __init__(self, mining_skill, appraisal_skill):
+        self.mining_skill = mining_skill
+        self.appraisal_skill = appraisal_skill
 
 
 class Agent:
 
-    # d = dimension-list-of-raw-facet-scores [d1,d2,d3,d4,d5,d6]
-    # where d ∈ [n,e,o,c,a] = [Neuroticism,Extraversion,Openness,Conscientiousness,Agreeableness]
-    # 0 <= raw-facet-score <= 35
+    # Uses HEXACO personality model
+    def __init__(self, name, competency, h, e, x, a, c, o):
 
-    def __init__(self, n, e, o, c, a, name):
-        # creates map from personality facets (e.g. 'N1' or 'C3') to score
-        self.personality = personality_dictionary(n, e, o, c, a)
+        self.name = name
+        self.id = uuid.uuid1()
+
+        self.competency = competency
+
+        self.number_of_interactions = 0
+
+        # creates map from personality facets (e.g. 'X1' or 'C3') to score
+        self.personality_template = HexacoPersonality()
+        self.personality = self.personality_template.get_personality(h,e,x,a,c,o)
 
         # assigned social group
         self.social_group = None
@@ -19,22 +40,57 @@ class Agent:
         # is agent free (F) or busy (B) for interactions
         self.state = 'F'
 
+        self.wealth = 0
+
+        self.interactions = {}
+
         # list of all agents this agent is currently interacting with
         self.interacting_agents = []
 
-        # maps agents to status {respect, influence, prominence, estimated-personality}
-        self.agents_status = {}
+        # AllInteractions = { Friendship, Mentorship, Help, Theft}
+        # CurrentInteractions = { Friendship, Mentorship, Help, Theft}
+        # memory of the agent - stores information about other agents
+        # Agent -> Wealth, Competency Predictions, CurrentInteractions, AllInteractions
 
-        self.name = name
-        self.id = uuid.uuid1()
+        self.agent_information = {}
 
-        self.number_of_interactions = 0
+    def get_number_of_thefts(self):
+        thefts = self.interactions[Theft].copy()
+        num = 0
+        for t in thefts:
+            if t.proactive_agent == self:
+                num += 1
+        return num
+
+    # returns n.o times caught stealing
+    def number_of_times_caught(self, agent):
+        interactions = self.agent_information[agent]["AllInteractions"][Theft].copy()
+        all_theft_count = 0
+        for i in interactions:
+            if i.proactive_agent == agent:
+                all_theft_count += 1
+        return all_theft_count
+
+    def number_of_times_stolen_from_me(self, agent):
+        thefts = self.interactions[Theft].copy()
+        num = 0
+        for t in thefts:
+            if t.proactive_agent == agent and t.reactive_agent == self:
+                num += 1
+        return num
 
     def set_social_group(self, social_group):
         self.social_group = social_group
 
     def __repr__(self):
         return self.name
+
+
+
+
+
+
+
 
     def action(self):
         # based on the personality it will generate an action by applying a probability distribution

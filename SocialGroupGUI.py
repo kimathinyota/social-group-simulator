@@ -2,7 +2,7 @@ import operator
 import random
 from src.graphics import *
 import math
-import src.Interaction
+from src.Interaction import *
 import enum
 
 
