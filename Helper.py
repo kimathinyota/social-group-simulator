@@ -14,6 +14,13 @@ class PersonalityTemplate:
                 new_personality[key] = accuracy_value(personality[key], accuracy)
         return new_personality
 
+    def facet_percentage(self, facets, personality):
+        total = self.max_facet_score * len(facets)
+        score = 0
+        for f in facets:
+            score += (personality[f] if personality[f] is not None else 0)
+        return score/total
+
     def dimension_total(self, personality, dimension_letter):
         tot = 0
         for x in range(1, self.number_of_facets + 1):
@@ -109,9 +116,6 @@ def random_boolean_variable(truth_likelyhood):
         return False
 
     return True
-
-
-
 
 
 def accuracy_value(value, accuracy):
