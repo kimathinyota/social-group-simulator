@@ -1,14 +1,18 @@
 from src.SocialGroupGUI import *
+import threading
 
 
 class ServiceGUI:
     def __init__(self):
         self.requestsList = []
         self.gui = SocialGroupGUI(1300, 700)
+        self.lock = threading.Lock()
 
     def service_request(self, request_code, args):
         request = {'type': request_code, 'args': args}
+        self.lock.acquire()
         self.requestsList.append(request)
+        self.lock.release()
 
     def service_draw_interaction_request(self, agents, interaction_name):
         self.gui.draw_interction(interaction_name, agents[0].name, agents[1].name)
@@ -23,9 +27,12 @@ class ServiceGUI:
         self.gui.set_agent_personality_list(agents)
 
     def find_unserviced_request(self):
+        self.lock.acquire()
         if len(self.requestsList) == 0:
             return None
-        return self.requestsList[0]
+        r = self.requestsList[0]
+        self.lock.release()
+        return r
 
     def run(self):
         while True:
@@ -37,9 +44,11 @@ class ServiceGUI:
                 args = request['args']
                 if code == 1:
                     self.service_draw_interaction_request(args[0], args[1])
-                    self.gui.display(0.25, 30)
+                    self.gui.refresh()
+                    #self.gui.display(0.1, 30)
                 elif code == 2:
                     self.service_end_interaction_request(args[0])
+                    self.gui.refresh()
                     self.gui.display(0.1, 30)
                 elif code == 3:
                     self.service_update_hierarchy_request(args[0])

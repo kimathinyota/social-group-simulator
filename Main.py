@@ -1,49 +1,109 @@
-from src.InformalSocialGroup import *
+
 from src.Agent import *
-from src.RLearningAgent import *
+from src.DisplayServer import *
+from src.GoldMiningEnvironment import *
+
 import threading
 
 
-def run_agent(lock, social_group, agent):
-    agent.run(social_group, lock)
+def run_agent(agent, environment):
+    agent.set_environment(environment)
+    agent.run()
 
 
-def add_agent(agent, social_group, lock):
-    t1 = threading.Thread(target=run_agent, args=(lock, social_group, agent))
+def add_agent(agent, environment):
+    t1 = threading.Thread(target=run_agent, args=(agent, environment))
     t1.start()
 
 
-def start_social_group(gui_server, gui_server_lock):
-    social_group = SocialGroup(gui_server, gui_server_lock)
-    lock = threading.Lock()
+def start_environment(gui_server):
+    environment = ResourceMiningEnvironment(3000, 10, gui_server)
 
+    agent1 = Agent.random("Kim")
+    agent2 = Agent.random("Bob")
+    agent3 = Agent.random("Tom")
+    agent4 = Agent.random("Don")
+    agent5 = Agent.random("Log")
+    agent6 = Agent.random("Bro")
 
-    wanted_values = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'O5', 'C1', 'C4', 'C5']
-    unwanted_values = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6']
+    add_agent(agent1, environment)
+    add_agent(agent2, environment)
+    add_agent(agent3, environment)
+    add_agent(agent4, environment)
+    add_agent(agent5, environment)
+    add_agent(agent6, environment)
 
-    #agent1 = Agent([10,10,10,10,10,10],[30,30,30,30,30,30],[30,30,30,30,30,30],[30,30,30,30,30,30],[30,30,30,30,30,30], "Best")
+    environment.run()
 
-    #agent2 = Agent([7,12,10,10,10,10],[30,30,30,30,30,30],[30,30,30,30,30,30],[30,30,30,30,30,30],[30,30,30,30,30,30], "Best")
+def start_environment2(environment):
+    agent1 = Agent.random("Kim")
+    agent2 = Agent.random("Bob")
+    agent3 = Agent.random("Tom")
+    agent4 = Agent.random("Don")
+    agent5 = Agent.random("Log")
+    agent6 = Agent.random("Bro")
+    agent7 = Agent.random("Gon")
+    agent8 = Agent.random("Ken")
+    agent9 = Agent.random("Ceb")
+    agent10 = Agent.random("Dan")
+    agent11 = Agent.random("Joe")
+    agent12 = Agent.random("Yoe")
 
-    agent1 = get_best_agent("Strong",wanted_values, unwanted_values)
-    agent2 = get_best_agent("Weak", unwanted_values, wanted_values)
-    agent3 = zero_r_agent("Smart")
-
-
-    add_agent(agent1, social_group, lock)
-    add_agent(agent3, social_group, lock)
+    add_agent(agent1, environment)
+    add_agent(agent2, environment)
+    add_agent(agent3, environment)
+    add_agent(agent4, environment)
+    add_agent(agent5, environment)
+    add_agent(agent6, environment)
+    add_agent(agent7, environment)
+    add_agent(agent8, environment)
+    add_agent(agent9, environment)
+    add_agent(agent10, environment)
+    add_agent(agent11, environment)
+    add_agent(agent12, environment)
 
 
 def main():
     gui_server = ServiceGUI()
-    lock = threading.Lock()
-    t1 = threading.Thread(target=start_social_group, args=(gui_server, lock))
+    t1 = threading.Thread(target=start_environment, args=(gui_server,) )
     t1.start()
     gui_server.run()
 
 
+def main2():
+    environment = ResourceMiningEnvironment(10000, 10,5)
+    start_environment2(environment)
+    requests = environment.run()
+    gui = SocialGroupGUI(1400, 800)
+
+
+    agents = []
+    prison = []
+    interactions = []
+
+    for request in requests:
+        code = request['type']
+        args = request['args']
+        print("Request",request)
+        if code == 1:
+            interactions += args[0]
+            agents = args[1]
+            prison = args[2]
+        else:
+            # Display all interactions
+            if len(interactions) > 0:
+                new_request = ServiceGUI.construct_request(1,[interactions,agents,prison])
+                print("Interaction request", new_request)
+                ServiceGUI.process_request(gui, new_request)
+                interactions = []
+            ServiceGUI.process_request(gui,request)
+
+    gui.display(100,30)
+
+
+
 if __name__ == "__main__":
-    main()
+    main2()
 
 
 def random_agent(name):
@@ -53,6 +113,6 @@ def random_agent(name):
         for y in range(1, 7):
             temp.append(random.randrange(1, 34))
         bigfive.append(temp)
-    return Agent(bigfive[0], bigfive[1], bigfive[2], bigfive[3], bigfive[4], name)
+    return Agent(name,Competency.random(),HexacoPersonality().random_personality())
 
 

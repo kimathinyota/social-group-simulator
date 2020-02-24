@@ -14,7 +14,6 @@ def random_agent():
     return Agent(bigfive[0], bigfive[1], bigfive[2], bigfive[3], bigfive[4])
 
 
-
 def run_agent(lock):
     global social_group
     agent = random_agent()

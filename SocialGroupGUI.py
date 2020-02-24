@@ -2,8 +2,11 @@ import operator
 import random
 from src.graphics import *
 import math
-from src.Interaction import *
+import src.GoldMiningEnvironment as environ
+import src.Helper as helper
 import enum
+from decimal import Decimal
+
 
 
 
@@ -52,6 +55,8 @@ class SocialGroupGUI:
 
 
 
+
+
         hierarchy_view = Rectangle(Point(x, 0), Point(width, y))
         hierarchy_view.setFill(color_rgb(0, 176, 240))
         hierarchy_view.setWidth(2)
@@ -76,22 +81,14 @@ class SocialGroupGUI:
         personality_view.draw(self.win)
 
         labelWidth = 95
-        labelHeight = 30
-        label = Text(Point(int(0.02 * width + labelWidth / 2), int(0.025 * height + y)), "Personality")
-        label.setSize(23)
-        label.setTextColor("black")
-        label.setFace("arial")
-        label.setStyle("bold")
-        label.draw(self.win)
+        labelHeight = 17
 
-        desc = 'Agent | (N1,N2,N3,N4,N5,N6) | (C1,C2,C3,C4,C5,C6) | (A1,A2,A3,A4,A5,A6) | (E1,E2,E3,E4,E5,E6) | (O1,O2,O3,O4,O5,O6)'
-        labelWidth = 10 + self.estimate_length(desc)
-        label = Text(Point(int(10 + labelWidth / 2), int(0.025 * height + y + labelHeight)), desc)
-        label.setSize(17)
-        label.setTextColor("black")
-        label.setFace("arial")
-        label.setStyle("normal")
-        label.draw(self.win)
+        personality_x = int(0.02 * width + labelWidth / 2)
+        personality_y = int(0.025 * height + y)
+
+        self.get_text(Point(personality_x,personality_y),"Personality",23,"black","arial","bold")
+
+        self.get_text(Point(personality_x + labelWidth + 180, personality_y), "[Name] P:([H],[E],[X],[A],[C],[O]) C:([Mining],[Appraisal])", 15, "black", "arial", "bold")
 
         # Interaction -> [components]
         self.interactions = {}
@@ -117,19 +114,33 @@ class SocialGroupGUI:
                                                 ArrowHeadTemplate(ArrowType.line, red, 2.5, 15))
 
         # Type -> (colour, length, width, angle,  (on_first_point, is_line_type), (on_second_point, is_line_type) )
-        self.interaction_type_display = {src.Interaction.Friendship: friendship_template,
-                                         src.Interaction.Mentorship: mentorship_template,
-                                         src.Interaction.Help: help_template,
-                                         src.Interaction.Theft: theft_template}
+        self.interaction_type_display = {environ.Friendship: friendship_template,
+                                         environ.Mentorship: mentorship_template,
+                                         environ.Help: help_template,
+                                         environ.Theft: theft_template}
 
         self.mine_arrow_line_template = ArrowLineTemplate(2.5, color_rgb(0, 0, 0),
                                                           ArrowHeadTemplate(ArrowType.none, color_rgb(0, 0, 0), 2.5, 15),
                                                           ArrowHeadTemplate(ArrowType.line, color_rgb(0, 0, 0), 2.5, 15))
 
 
+        self.title = None
+        self.round = None
+        self.total = None
 
+        self.prisons_components = None
 
+        self.personality_offset_y = personality_y + labelHeight
+        self.personality_grid_width = 350
+        self.personality_grid_cols = int(width / self.personality_grid_width)
+        self.personality_grid_height = 30
 
+        self.personality_grid_rows = int((height - self.personality_offset_y) / self.personality_grid_height)
+
+        diff = (height - self.personality_offset_y) - self.personality_grid_height * self.personality_grid_rows
+        diff /= self.personality_grid_rows
+
+        self.personality_grid_height += diff
 
         # Agent -> { components: [componentlist], radius: radius}
         self.agent_to_components_info = {}
@@ -139,40 +150,34 @@ class SocialGroupGUI:
 
 
 
-
-
     def estimate_length(self, text):
         return len(text) * 8
 
-    def draw_agent_personality(self, name, personality):
-        order = ['N', 'C', 'A', 'E', 'O']
-        text = name + ' | '
-        for j in range(0, 5):
-            c = order[j]
-            dimension = '('
-            for i in range(1, 7):
-                p = personality[c + str(i)]
-                t = '0' + str(p) if p < 10 else str(p)
-                dimension += t
-                if i < 6:
-                    dimension += ","
-            dimension += ')'
-            text += dimension
-            if j < 4:
-                text += ' | '
-
-        labelWidth = self.estimate_length(text)
-        label = Text(Point(int(labelWidth / 2), self.personality_current_height), text)
-        label.setSize(17)
-        label.setTextColor("black")
-        label.setFace("arial")
-        label.setStyle("normal")
-        label.draw(self.win)
+    def draw_agent_personality(self, position, name, personality, competency):
+        # Agent1 P:(87,82,80,24,72) C:(0.85,0.835)
+        text = name + " " + "P:" + helper.HexacoPersonality().dimension_text(personality) + " C:" + str(competency)
+        r = int(position / self.personality_grid_cols)
+        c = position % self.personality_grid_cols
+        sx = c * self.personality_grid_width
+        x = sx + self.personality_grid_width/2
+        sy = self.personality_offset_y + r * self.personality_grid_height
+        y = sy + self.personality_grid_height/2
+        rect = Rectangle(Point(sx,sy),Point(sx + self.personality_grid_width, sy + self.personality_grid_height))
+        rect.setOutline("black")
+        rect.draw(self.win)
+        label = self.get_text(Point(x,y),text,17,"black","arial","normal")
         self.personality_canvas.append(label)
-        self.personality_current_height += 25
+        self.personality_canvas.append(rect)
+
+
+
+
+
 
     def close(self):
         self.win.close()
+
+
 
     def clear_agent_canvas(self):
         for key in self.agent_canvas:
@@ -189,6 +194,8 @@ class SocialGroupGUI:
         for i in range(1, int(secs * rate)):
             update(rate)
 
+    def refresh(self, rate=30):
+        update(rate)
 
 
     def rotate_point(self, pivot_point, angle, point):
@@ -303,6 +310,43 @@ class SocialGroupGUI:
 
         return arrow
 
+    def display_title(self, text):
+        if len(text) == 0 and self.title is not None:
+            self.title.undraw()
+            self.title = None
+            return None
+        x = self.x - self.resource_width
+        x += self.resource_width/2
+        y = 20
+
+        if self.title is not None:
+            self.title.undraw()
+
+        self.title = self.get_text(Point(x, y), text, 20, "black", "arial", "bold")
+
+    def display_round(self, round):
+        if self.round is not None:
+            self.round.undraw()
+            self.round = None
+        x = self.x - self.resource_width
+        x += self.resource_width / 2
+        y = 50
+        self.round = self.get_text(Point(x, y), "Round: " + str(round) , 20, "black", "arial", "bold")
+
+    def format_e(n):
+        a = '%E' % n
+        return a.split('E')[0].rstrip('0').rstrip('.') + 'E' + a.split('E')[1]
+
+    def display_total(self, total):
+        if self.total is not None:
+            self.total.undraw()
+            self.total = None
+        x = self.x - self.resource_width
+        x += self.resource_width / 2
+        y = self.y - 20
+
+        text = "Total: " + ('{:.2e}'.format(Decimal(str(total))) if total > 99999 else str(total) )
+        self.total = self.get_text(Point(x, y), text, 20, "black", "arial", "bold")
 
     def move_independent_agent(self, agent, radius, x, y):
         # Agent -> { components: [componentlist], radius: radius, interactions: [InteractionList] }
@@ -330,7 +374,6 @@ class SocialGroupGUI:
         n = int(len(independent_agents) / z)
         rem = len(independent_agents) - n*z
 
-        print(nxt,nx,ny)
         wx, wy1 = n*sep, n*sep
         wy2 = self.y - n*sep
 
@@ -346,17 +389,24 @@ class SocialGroupGUI:
         return wx, wy1, wy2
 
 
+    def draw_prison_rectangle(self, p1, p2, agent, prison_agents):
+        components = []
+        if agent in prison_agents:
+            rect = Rectangle(p1, p2)
+            rect.setFill("grey")
+            rect.setOutline("grey")
+            rect.draw(self.win)
+            components.append(rect)
+        return components
 
-
-
-
-    def draw_independent_agents(self, independent_agents, radius=20, padding=10):
+    def draw_independent_prison_agents(self, independent_agents, prisons, radius=20, padding=10):
+        self.clear_prison_components()
         x = self.x - self.resource_width
-        ideal_diameter = radius*2
+        ideal_diameter = radius * 2
         padding = padding
         sep = ideal_diameter + padding
 
-        xt = x - 1.5*sep
+        xt = x - 1.5 * sep
         # number of agents that can fit at the top edge
         nxt = int(xt / sep)
 
@@ -372,6 +422,8 @@ class SocialGroupGUI:
 
         n = len(independent_agents)
 
+        prison_components = []
+
         count = 0
 
         while index < n:
@@ -379,11 +431,14 @@ class SocialGroupGUI:
             end = min(index + nxt, n)
             sublist = independent_agents[index:end]
             # for each agent in sublist - move agent to correct position
-            ty = sep/2 + sep*count
-            tx = xt - sep/2
+            ty = sep / 2 + sep * count
+            tx = xt - sep / 2
             for i in range(len(sublist)):
                 agent = sublist[i]
-                self.move_independent_agent(agent,ideal_diameter/2,tx,ty)
+                p1, p2 = Point(tx - sep/2, ty - sep/2), Point(tx + sep / 2, ty + sep / 2)
+                prison_components += self.draw_prison_rectangle(p1,p2,agent,prisons)
+                self.move_independent_agent(agent, ideal_diameter / 2, tx, ty)
+
                 tx -= sep
 
             index = end
@@ -396,7 +451,9 @@ class SocialGroupGUI:
             ty = sep + sep / 2
             for i in range(len(sublist)):
                 agent = sublist[i]
-                self.move_independent_agent(agent, ideal_diameter / 2,tx,ty)
+                p1, p2 = Point(tx - sep / 2, ty - sep / 2), Point(tx + sep / 2, ty + sep / 2)
+                prison_components += self.draw_prison_rectangle(p1, p2, agent, prisons)
+                self.move_independent_agent(agent, ideal_diameter / 2, tx, ty)
                 ty += sep
 
             index = end
@@ -409,13 +466,73 @@ class SocialGroupGUI:
             tx = sep / 2
             for i in range(len(sublist)):
                 agent = sublist[i]
+                p1, p2 = Point(tx - sep / 2, ty - sep / 2), Point(tx + sep / 2, ty + sep / 2)
+                prison_components += self.draw_prison_rectangle(p1, p2, agent, prisons)
                 self.move_independent_agent(agent, ideal_diameter / 2, tx, ty)
                 tx += sep
 
             index = end
-
             count += 1
+        self.prisons_components = prison_components
+        return prison_components
 
+    def clear_prison_components(self):
+        if self.prisons_components is not None:
+            self.remove_components(self.prisons_components)
+            self.prisons_components = None
+
+    def draw_independent_agents(self, independent_agents, radius=20, padding=10):
+        self.draw_independent_prison_agents(independent_agents,independent_agents[0:int(len(independent_agents)/2)],radius,padding)
+
+    def display_mining_still_animation(self, r, agentsWealth, sY, seperationY):
+        x = self.x - self.resource_width
+        x1 = x - 2 * r
+        x2 = x - r
+        x3 = x + r
+        ax = x - r
+        ax2 = ax - 1.5 * r
+        components = []
+        for i in range(0, len(agentsWealth)):
+            y = sY + seperationY * i
+            ax = x - r
+            ax2 = ax - 1.5 * r
+            agent = agentsWealth[i][0]
+            wealth = agentsWealth[i][1]
+            #components += self.draw_adv_agent(agent.name,x,y,r) + self.draw_wealth_arrow( Point(ax,y),Point(ax2,y),("+" + str(wealth)), False,True)
+            components += self.move_independent_agent(agent,r,x,y) + self.draw_wealth_arrow(Point(ax, y), Point(ax2,y), ("+" + str(wealth)))
+        return components
+
+    def display_still_animation(self, agentsToWealth, prison_agents, rate=30, speed=1, radius=20):
+        agentHeight = 70
+        paddingHeight = 10
+        seperationY = agentHeight + paddingHeight
+        n = int(self.y / seperationY)
+        index = 0
+        aw = [u[0] for u in agentsToWealth]
+        full = prison_agents.copy() + aw
+        self.draw_independent_prison_agents(full, prison_agents, radius)
+        update(rate)
+
+
+        while index < len(agentsToWealth):
+            end = min(index+n,len(agentsToWealth))
+            sublist = agentsToWealth[index:end]
+
+            index = end
+            components = self.display_mining_still_animation(radius,sublist,seperationY/2,seperationY)
+            self.display(1/speed, rate)
+            self.remove_components(components)
+            update(rate)
+
+            lst = prison_agents.copy() + aw[0:end]
+            self.draw_independent_prison_agents(lst,prison_agents,radius)
+            update()
+
+            if index < len(agentsToWealth):
+                self.display(0.7 / speed, rate)
+
+    def display_mining(self, agentsToWealth, prison_agents, rate=30, speed=2, radius=20):
+        self.display_still_animation(agentsToWealth, prison_agents,rate,speed, radius)
 
     def display_mine_animations(self, r, agentsWealth, sY, seperationY, rate, speed):
         x = self.x - self.resource_width
@@ -424,7 +541,7 @@ class SocialGroupGUI:
         x3 = x + r
 
         # animation of agent moving from x1 to x2
-        for x in range(int(x1),int(x2), int(speed*3)):
+        for x in range(int(x1),int(x2), int(speed*5)):
             ax = x + r
             ax2 = ax + 1.5*r
             components = []
@@ -442,7 +559,7 @@ class SocialGroupGUI:
             self.remove_components(components)
 
         # animation of agent moving from x2 to x3 (no arrow)
-        for x in range(int(x2), int(x3), int(speed*4)):
+        for x in range(int(x2), int(x3), int(speed*6)):
             ax = x + r
             ax2 = ax + 1.5 * r
             components = []
@@ -457,7 +574,7 @@ class SocialGroupGUI:
             self.remove_components(components)
 
         # animation of agent moving from x3 to x2 (arrow)
-        for x in range(int(x3), int(x2), int(speed*-3)):
+        for x in range(int(x3), int(x2), int(speed*-5)):
             ax = x - r
             ax2 = ax - 1.5 * r
             components = []
@@ -474,7 +591,7 @@ class SocialGroupGUI:
             self.remove_components(components)
 
         # animation of agent moving from x2 to x1 (no arrow)
-        for x in range(int(x2), int(x1), int(speed*-4)):
+        for x in range(int(x2), int(x1), int(speed*-6)):
             ax = x - r
             ax2 = ax - 1.5 * r
             components = []
@@ -488,6 +605,8 @@ class SocialGroupGUI:
             update(rate)
             self.remove_components(components)
 
+
+
     def test_display(self,agentWealth, interactions):
         sY = 40
         rate = 30
@@ -495,6 +614,8 @@ class SocialGroupGUI:
         seperationY = 80
         #self.display_mine_animations(r,agentWealth,sY,seperationY,rate, 1.6)
         #self.display_mine_animation(agentWealth,rate, 2)
+
+        self.display_still_animation(agentWealth,rate)
 
         keys = [u[0] for u in agentWealth]
         b = {u: [] for u in keys}
@@ -509,7 +630,6 @@ class SocialGroupGUI:
         #self.set_social_hierarchy()
 
 
-        self.display_mine_animation(agentWealth, rate, 1.6)
 
 
 
@@ -518,7 +638,10 @@ class SocialGroupGUI:
 
 
 
-    def display_mine_animation(self, agentsToWealth, rate, speed, radius = 20):
+
+
+    def display_mining_animation(self, agentsToWealth, rate=30, speed=1.6, radius = 20):
+        speed = 3
         agentHeight = 70
         paddingHeight = 10
         seperationY = agentHeight + paddingHeight
@@ -691,7 +814,6 @@ class SocialGroupGUI:
     def draw_single_interaction(self, interaction, p1, p2, radius=20):
         a1 = self.get_angle(p1,p2)
         a2 = self.get_angle(p2,p1)
-        print("angle",a1,a2)
 
         np1 = self.point_on_line(p1,p2,radius)
         np2 = self.point_on_line(p2,p1,radius)
@@ -722,31 +844,32 @@ class SocialGroupGUI:
             accepted_agent = interaction.get_accepted_agent()
             if accepted_agent is not None:
                 if interaction.is_success:
-                    text = "ACCEPTOR"
+                    text = "ACP"
                     colour = color_rgb(0,255,0)
                 else:
-                    text = "REJECTOR"
+                    text = "REJ"
                     colour = color_rgb(255, 0, 0)
 
                 respond_point = tp2
                 if interaction.get_reactive_agent() == interaction.get_requested_agent():
-                    respond_point, request_point = tp1
+                    respond_point = tp1
 
                 components.append(self.get_text(respond_point, text, size, colour, "arial", "bold"))
 
         else:
-            if isinstance(interaction,src.Interaction.Help):
+            if isinstance(interaction, environ.Help):
                 funds = str(interaction.helping_funds)
                 components.append(self.get_text(tp2,"+" + funds,size,"black","arial","bold"))
 
-
-            elif isinstance(interaction,src.Interaction.Theft):
-                funds = str(interaction.stolen_funds)
+            elif isinstance(interaction, environ.Theft):
+                s = interaction.get_stolen_funds()
+                print(s)
+                funds = "-" + str(s) if s < 0 else str(s)
                 if interaction.is_caught:
-                    components.append(self.get_text(tp2, "0", size, "black", "arial", "bold"))
-                    components.append(self.get_text(tp1, "caught", size, "red", "arial", "bold"))
-
-                components.append(self.get_text(tp2, "-" + funds, size, "black", "arial", "bold"))
+                    components.append(self.get_text(tp2, funds, size, "black", "arial", "bold"))
+                    components.append(self.get_text(tp1, "PRSN", size, "grey", "arial", "bold"))
+                else:
+                    components.append(self.get_text(tp2, funds, size, "black", "arial", "bold"))
 
         return components
 
@@ -760,9 +883,9 @@ class SocialGroupGUI:
         label.draw(self.win)
         return label
 
-    def display_interaction(self, interactions, independent_agents, radius=20, padding=10):
+    def display_interaction(self, interactions, independent_agents, imprisoned_agents, radius=20, padding=10):
         #independent_agents = [u[0] for u in independent_agents]
-        self.draw_independent_agents(independent_agents,radius,padding)
+        self.draw_independent_prison_agents(independent_agents,imprisoned_agents,radius,padding)
 
         bx, by1, by2 = self.get_interaction_window_boundaries(independent_agents, radius, padding)
         bx2 = self.x - self.resource_width
@@ -802,10 +925,6 @@ class SocialGroupGUI:
             sx, sy = wx + x*ws, wy1 + y*ws
             sx2, sy2 = sx + ws, sy + ws
 
-            # rec = Rectangle(Point(sx, sy), Point(sx2, sy2))
-            # rec.setFill(color_rgb(200, 0, 0))
-            # rec.draw(self.win)
-
             x1 = (sx+bsep/2, sx+bsep/2 + asep/2)
             x2 = (sx+bsep/2 + asep/2 + isep, sx2-bsep/2)
             x3 = (sx+bsep/2, sx2-bsep/2)
@@ -818,13 +937,6 @@ class SocialGroupGUI:
                           ((x3, x3), (y1, y2)), ((x3, x3), (y2, y1))]
 
             strat = strategies[random.randrange(len(strategies))]
-
-            # rec = Rectangle(Point(strat[0][0][0],strat[1][0][0]), Point(strat[0][0][1],strat[1][0][1]))
-            # rec.setFill("blue")
-            # rec.draw(self.win)
-            # rec = Rectangle(Point(strat[0][1][0], strat[1][1][0]), Point(strat[0][1][1], strat[1][1][1]))
-            # rec.setFill("blue")
-            # rec.draw(self.win)
 
             # draw interaction at random position in this window
             p1 = Point(random.randrange(int(strat[0][0][0]), int(strat[0][0][1])), random.randrange(int(strat[1][0][0]), int(strat[1][0][1])))
@@ -856,10 +968,12 @@ class SocialGroupGUI:
 
     def set_agent_personality_list(self, agents):
         self.clear_personality_canvas()
-        for a in agents:
-            self.draw_agent_personality(a.name, a.personality)
-
-
+        m = self.personality_grid_cols * self.personality_grid_rows
+        i = 0
+        while i < m and i < len(agents):
+            agent = agents[i]
+            x2 = self.draw_agent_personality(i,agent.name,agent.personality,agent.competency)
+            i += 1
 
 
 class ArrowType(enum.Enum):

@@ -43,6 +43,13 @@ class PersonalityTemplate:
         result = 1 - spatial.distance.cosine(listx, listy)
         return result
 
+    def random_personality(self):
+        personality = {}
+        for d in self.dimensions:
+            for x in range(1, self.number_of_facets + 1):
+                personality[d + str(x)] = random.randrange(1,self.max_facet_score)
+        return personality
+
     def personality_similarity(self, personality_one, personality_two):
         list1 = []
         list2 = []
@@ -68,6 +75,33 @@ class PersonalityTemplate:
 
 
 class HexacoPersonality(PersonalityTemplate):
+
+    def text(self, personality):
+        text = ""
+        for j in range(len(self.dimensions)):
+            c = self.dimensions[j]
+            dimension = '('
+            for i in range(1, self.number_of_facets + 1):
+                p = personality[c + str(i)]
+                t = '0' + str(p) if p < 10 else str(p)
+                dimension += t
+                if i < self.number_of_facets:
+                    dimension += ","
+            dimension += ')'
+            text += dimension
+            if j < 4:
+                text += ' | '
+        return text
+
+    def dimension_text(self,personality):
+        text = "("
+        for i in range(len(self.dimensions)):
+            d = self.dimensions[i]
+            text += str(round(100*self.dimension_percentage(personality,d)))
+            if i < len(self.dimensions)-1:
+                text += ","
+        text += ")"
+        return text
 
     def __init__(self):
         PersonalityTemplate.__init__(self, ['H', 'E', 'X', 'A', 'C', 'O'], 4, 100)
@@ -122,13 +156,25 @@ def accuracy_value(value, accuracy):
     # pick 5 random values between 1 and value
     weights = []
     values = []
+
+    dif = 1
+
+    if value < 10:
+        if value == 0:
+            value = 0.1
+        value *= 10
+        dif = 10
+
+    value = 1 + int(value)
+
     for x in range(5):
+        #print(value)
         values.append(random.randrange(1,value))
         weights.append((1-accuracy)/5)
 
     values.append(value)
     weights.append(accuracy)
-    return random.choices(population=values,weights=weights,k=1)[0]
+    return random.choices(population=values,weights=weights,k=1)[0] / dif
 
 
 def logistic_update_status_weight(n, c, m, z):

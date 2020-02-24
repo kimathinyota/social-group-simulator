@@ -1,10 +1,16 @@
 from src.Helper import *
 import time
 import uuid
-from src.Interaction import *
+from src.GoldMiningEnvironment import *
+
+import threading
 
 
 class Competency:
+
+    def __repr__(self):
+        x = "(" + str(round(self.mining_skill,3)) + "," + str(round(self.appraisal_skill,3)) + ")"
+        return x
 
     def percentage(self):
         a = self.appraisal_skill
@@ -45,9 +51,13 @@ class Competency:
 
         return skills, m, a
 
+    @staticmethod
+    def random():
+        return Competency(random.randrange(0,1000)/1000,random.randrange(0,1000)/1000)
+
     def random_competency(self, accuracy):
-        return Competency(accuracy_value(self.mining_skill,accuracy),
-                          accuracy_value(self.appraisal_skill,accuracy))
+        return Competency(accuracy_value(100*self.mining_skill,accuracy)/100,
+                          accuracy_value(100*self.appraisal_skill,accuracy)/100)
 
     def contains_greater_competency_skill(self, competency):
         return self.mining_skill > competency.mining_skill or self.appraisal_skill > competency.appraisal_skill
@@ -60,7 +70,7 @@ class Competency:
 class Agent:
 
     # Uses HEXACO personality model
-    def __init__(self, name, competency, h, e, x, a, c, o):
+    def __init__(self, name, competency, personality):
 
         self.name = name
         self.id = uuid.uuid1()
@@ -69,9 +79,12 @@ class Agent:
 
         self.number_of_interactions = 0
 
+        self.max_number_of_interactions = None
+        self.current_number_of_interactions = None
+
         # creates map from personality facets (e.g. 'X1' or 'C3') to score
         self.personality_template = HexacoPersonality()
-        self.personality = self.personality_template.get_personality(h,e,x,a,c,o)
+        self.personality = personality
 
         # assigned environment
         self.environment = None
@@ -79,9 +92,11 @@ class Agent:
         # is agent free (F) or busy (B) for interactions
         self.state = 'F'
 
+        self.access_wealth_lock = threading.Lock()
         self.wealth = 0
 
-        self.interactions = {}
+        self.access_interactions_lock = threading.Lock()
+        self.interactions = {Friendship:[[],[]], Mentorship:[[],[]], Help:[[],[]], Theft:[[],[]]}
 
         # list of all agents this agent is currently interacting with
         self.interacting_agents = []
@@ -90,13 +105,16 @@ class Agent:
         self.is_busy = False
 
         self.is_interacting = None
+        self.has_stopped_interaction = None
         self.is_mining = None
 
         self.is_running = None
 
+        self.access_pending_interactions_lock = threading.Lock()
+
         self.current_round = 0
 
-
+        self.is_in_prison = None
 
         # Interactions = { Friendship, Mentorship, Help, Theft}
         # Agent -> Interactions -> Type -> ([Agent is Proactive], [Agent is Reactive])
@@ -105,7 +123,38 @@ class Agent:
         # NoRounds = number of shared interaction rounds
         # Agent -> Wealth, Personality, Competency, Interactions, NoRounds
 
+        self.access_agent_information_lock = threading.Lock()
         self.agent_information = {}
+
+    def update_wealth(self, agent, new_wealth):
+        self.access_agent_information_lock.acquire()
+        self.agent_information[agent]["Wealth"] = new_wealth
+        self.access_agent_information_lock.release()
+
+    def update_personality(self, agent, new_personality):
+        self.access_agent_information_lock.acquire()
+        self.agent_information[agent]["Personality"] = new_personality
+        self.access_agent_information_lock.release()
+
+    def update_competency(self, agent, new_competency):
+        self.access_agent_information_lock.acquire()
+        self.agent_information[agent]["Competency"] = new_competency
+        self.access_agent_information_lock.release()
+
+    def increment_no_rounds(self):
+        self.access_agent_information_lock.acquire()
+        self.current_round += 1
+        for agent in self.agent_information:
+            self.agent_information[agent]["NoRounds"] += 1
+        self.access_agent_information_lock.release()
+
+    def add_new_agent(self, agent, wealth, personality, competency):
+        interactions = {Friendship: ([],[]), Mentorship: ([],[]), Help: ([],[]), Theft: ([],[]) }
+        info = {"Wealth": wealth, "Personality": personality, "Competency": competency, "Interactions":interactions, "NoRounds": 1}
+        self.access_agent_information_lock.acquire()
+        self.agent_information[agent] = info
+        self.access_agent_information_lock.release()
+        ##print("Included agents for ", self, " is ", list(self.agent_information.keys()))
 
     def get_number_of_thefts(self):
         thefts = self.interactions[Theft].copy()
@@ -114,14 +163,22 @@ class Agent:
     # returns n.o times caught stealing
     def number_of_times_caught(self, agent):
         # Agent will be the proactive one
-        return len(self.agent_information[agent]["Interactions"][Theft][0])
+        self.access_agent_information_lock.acquire()
+        k = len(self.agent_information[agent]["Interactions"][Theft][0])
+        self.access_agent_information_lock.release()
+        return k
 
     def number_of_times_help(self, agent):
-        return len(self.agent_information[agent]["Interactions"][Help][0])
+        self.access_agent_information_lock.acquire()
+        k = len(self.agent_information[agent]["Interactions"][Help][0])
+        self.access_agent_information_lock.release()
+        return k
 
-    def increase_wealth(self, amount):
+    def increase_wealth(self, amount, should_notify_all=True, should_display=True, should_notify_environment=True):
+        self.access_wealth_lock.acquire()
         self.wealth += amount
-        self.environment.notify_wealth_increase(amount,self)
+        self.access_wealth_lock.release()
+        self.environment.notify_wealth_increase(amount,self, should_notify_all=should_notify_all, should_display=should_display, should_notify_environment=should_notify_environment)
 
     def number_of_times_stolen_from_me(self, agent):
         reactive_thefts = self.interactions[Theft][1].copy()
@@ -132,8 +189,9 @@ class Agent:
                 num += 1
         return num
 
-    def set_social_group(self, environment):
+    def set_environment(self, environment):
         self.environment = environment
+        self.environment.add_agent(self)
 
     def __repr__(self):
         return self.name
@@ -186,11 +244,20 @@ class Agent:
         return self.personality_template.facet_percentage(["A1"],self.personality)
 
     def friend(self, agent):
+        self.access_agent_information_lock.acquire()
+
+        info = self.agent_information[agent]
+
+        # p = number of agents
+        p = len(self.agent_information)
+        self.access_agent_information_lock.release()
+
         # A = number of friend interactions between them
         A = self.number_of_friendship_interactions(agent)
 
         # personality = appraised personality(agent)
-        personality = self.agent_information[agent]["Personality"]
+        personality = info["Personality"]
+
         # B = similar personality
         B = self.personality_template.personality_similarity(self.personality, personality)
         # C = number of help interactions between them
@@ -205,14 +272,14 @@ class Agent:
         G = self.number_of_times_help(agent)
 
         # Variable priority: D > A > C > B >= F > G >= E
+
         # n = number of interaction rounds
-        n = self.agent_information[agent]["NoRounds"]
-        # p = number of agents
-        p = len(self.agent_information)
+        n = info["NoRounds"]
+
         # f = forgiveness
         f = self.forgiveness()
 
-        return 0.5 + (1/40)(2*B + (1/n)(10*A + 5*C + 2*F + G) - (1-0.9*f)(17*D/n + E/(p*n)) )
+        return 0.5 + (1/40)*(2*B + (1/n)*(10*A + 5*C + 2*F + G) - (1-0.9*f)*(17*D/n + E/(p*n)) )
 
     def stealing_aversion(self):
         a = self.personality_template.dimension_percentage(self.personality,"A")
@@ -239,29 +306,35 @@ class Agent:
 
     def teachable(self, personality):
         fsm = self.personality_template.max_facet_score
-
         o2, o3 = personality['O2'], personality['O3']
         e1, e2, e3 = personality['E1'], personality['E2'], personality['E3']
-
         c = self.personality_template.dimension_percentage(personality,'C')
-        o = (o2 + o3)/2*fsm
-        e = (e1 + e2 + e3) / 3 * fsm
-
+        o = (o2 + o3)/(2*fsm)
+        e = (e1 + e2 + e3) / (3 * fsm)
         return (1/6) * (2 + o + 3*c - 2*e)
 
     def need_mentor(self, mentor, mentoring_cost):
+        self.access_agent_information_lock.acquire()
         competency = self.agent_information[mentor]["Competency"]
+        self.access_agent_information_lock.release()
         cd = competency.percentage_difference(self.competency)
-        cost = mentoring_cost/(self.wealth if (self.wealth == 0 or mentoring_cost > self.wealth) else 1)
+        if mentoring_cost is not None and mentoring_cost <= self.wealth:
+            cost = cost = mentoring_cost/self.wealth
+        else:
+            cost = 1
         return cd*(1-cost)
 
     def accept_mentor_probability(self, mentor, mentoring_cost):
-        p = (1/5) * (2*(self.teachable(self.personality) + self.need_mentor(mentor,mentoring_cost)) + self.friend(mentor))
+        teachable = self.teachable(self.personality)
+        p = (1/5) * (2*(teachable + self.need_mentor(mentor,mentoring_cost)) + self.friend(mentor))
         return p
 
     def accept_mentee_probability(self, mentee):
+        self.access_agent_information_lock.acquire()
         personality = self.agent_information[mentee]["Personality"]
-        p = (1/3) * (self.teachable(personality) + self.friend(mentee))
+        self.access_agent_information_lock.release()
+        teachable = self.teachable(personality)
+        p = (1/3) * (teachable + self.friend(mentee))
         return p
 
     def accept_friend_probability(self, friend):
@@ -273,7 +346,10 @@ class Agent:
             return None
 
         if self.is_busy:
+            self.access_pending_interactions_lock.acquire()
             self.pending_interaction_requests.append(interaction)
+            self.access_pending_interactions_lock.release()
+
             return None
 
         # Agent not busy and so can deal with request
@@ -283,9 +359,14 @@ class Agent:
         # only Friendship and Mentorship interactions require acceptance
         if isinstance(interaction,Friendship):
             accept = self.accept_friend_probability(other)
+            x = "Accept probability: " + str(accept)
+            #print(x)
             return random_boolean_variable(accept)
         elif isinstance(interaction,Mentorship):
-            accept = self.accept_mentor_probability(other) if self == interaction.reactive_agent else self.accept_mentee(other)
+            e = self.environment.estimated_earnings(self)
+            accept = self.accept_mentor_probability(other,e) if self == interaction.reactive_agent else self.accept_mentee_probability(other)
+            x = "Accept probability: " + str(accept)
+            #print(x)
             return random_boolean_variable(accept)
 
         return None
@@ -294,26 +375,37 @@ class Agent:
         other = interaction.other_agent(self)
         if isinstance(interaction, Friendship):
             request = self.accept_friend_probability(other)
-            return random_boolean_variable(request)
+            return request
         elif isinstance(interaction, Mentorship):
-            request = self.accept_mentor_probability(
-                other) if self == interaction.reactive_agent else self.accept_mentee(other)
-            return random_boolean_variable(request)
+            if self == interaction.reactive_agent:
+                # this agent is the mentee
+                # with mentoring, the mentor will take 25% of the money earnt in the current round
+                e = self.environment.estimated_mentoring_cost(self)
+                request = self.accept_mentor_probability(other,e)
+            else:
+                # this agent is the mentor
+                request = self.accept_mentee_probability(other)
+            return request
         elif isinstance(interaction, Theft):
             request = self.theft_probability(other)
-            return random_boolean_variable(request)
+            return request
         elif isinstance(interaction, Help):
             request = self.help_probability(other)
-            return random_boolean_variable(request)
+            return request
+
         return None
 
     def interaction_happened(self, interaction):
         # agent is notified of a successful interaction involving it
+        self.current_number_of_interactions += 1
+        self.access_pending_interactions_lock.acquire()
         if interaction in self.pending_interaction_requests:
             self.pending_interaction_requests.remove(interaction)
+        self.access_pending_interactions_lock.release()
         if not interaction.is_success:
             return None
         # only successful interactions (both accept) are stored
+        self.access_interactions_lock.acquire()
         tup = self.interactions[type(interaction)]
         if interaction.proactive_agent == self:
             tup[0].append(interaction.copy())
@@ -321,56 +413,85 @@ class Agent:
             tup[1].append(interaction.copy())
 
         self.interactions[type(interaction)] = tup
+        self.access_interactions_lock.release()
 
     def notify_interaction(self, interaction):
         if not interaction.is_success:
             return None
         # only successful interactions (both accept) are stored
-        other_agents = interaction.other_agent(self)
+        other_agents = interaction.other_agents(self)
         for agent in other_agents:
+            self.access_agent_information_lock.acquire()
             info = self.agent_information[agent]
+
             tup = info["Interactions"][type(interaction)]
             if agent == interaction.proactive_agent:
                 tup[0].append(interaction.copy())
             else:
                 tup[1].append(interaction.copy())
             self.agent_information[agent] = info
+            self.access_agent_information_lock.release()
 
-    def start_interacting(self):
-        self.current_round += 1
+    def start_interacting(self, in_prison=False):
+        self.increment_no_rounds()
+        self.current_number_of_interactions = 0
+        self.max_number_of_interactions = self.environment.get_max_number_of_interactions_each_round()
         self.is_mining = False
         self.is_interacting = True
-        self.is_busy = False
+        self.is_in_prison = in_prison
+        self.is_busy = in_prison
 
     def stop_interacting(self):
         self.is_busy = True
         self.is_interacting = False
-        self.pending_interaction_requests.clear()
 
     def start_mining(self):
+        # clear any risidual interactions - this only called when every agent has stopped interacting
+        self.pending_interaction_requests.clear()
         self.is_mining = True
+
+    @staticmethod
+    def random(name):
+        return Agent(name,Competency.random(),HexacoPersonality().random_personality())
+
+
+    def stop_running(self):
+        self.is_running = False
 
     def run(self):
         self.is_running = True
         while self.is_running:
             if self.is_interacting:
                 # agent is supposed to be interacting with other agents
-                will_interact = random_boolean_variable(self.interact_probability())
-                if will_interact:
+
+                can_interact = self.current_number_of_interactions < self.max_number_of_interactions
+
+                k = random_boolean_variable(self.interact_probability())
+
+                if not self.is_in_prison and can_interact and k:
                     # Agent decided to interact so will now request interaction options from environment
-                    interactions, weights = ResourceMiningEnvironment.get_requestable_interactions(self.environment,self)
-                    choice = random.choices(population=interactions, weights=weights, k=1)[0]
-                    # Now agent will request interaction
-                    choice.request(self)
+                    interactions, weights, average_probability = ResourceMiningEnvironment.get_requestable_interactions(self.environment,self)
+
+                    if interactions is not None:
+                        if self.name == "Tom":
+                            av = "Possibilities " + str(interactions) + " " + str(weights) + " " + str(average_probability)
+                            #print(av)
+                        if len(interactions) > 0:
+                            choice = random.choices(population=interactions, weights=weights, k=1)[0]
+                            choice.request(self)
+
 
                 # Agent will now respond to up to two received interactions
                 self.is_busy = True
                 respond_to = []
+                self.access_pending_interactions_lock.acquire()
                 for i in range(min(2,len(self.pending_interaction_requests))):
                     respond_to.append(self.pending_interaction_requests[i])
+                self.access_pending_interactions_lock.release()
 
                 for interaction in respond_to:
                     interaction.respond(self)
+            self.has_stopped_interaction = not self.is_interacting
 
 
 
