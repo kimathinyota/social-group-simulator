@@ -1,6 +1,7 @@
 from src.SocialGroupGUI import *
 import threading
 
+
 class ServiceGUI:
     def __init__(self):
         self.lock = threading.Lock()
@@ -45,7 +46,6 @@ class ServiceGUI:
                 i += 1
 
             remaining_interactions = remaining_interactions[len(group):]
-            print("Remaining:",remaining_interactions)
             groups.append(group)
 
         return groups
@@ -53,10 +53,9 @@ class ServiceGUI:
     @staticmethod
     def service_display_interactions(gui, interactions, agents, imprisoned_agents):
         groups = ServiceGUI.get_non_overlapping_interactions(interactions)
-        print("Groups", groups)
         for g in groups:
             gui.display_interaction(interactions,agents,imprisoned_agents)
-            gui.display(5,30)
+            gui.display(0.5,30)
             gui.clear_interactions()
             gui.refresh()
 

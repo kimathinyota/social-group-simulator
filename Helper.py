@@ -50,6 +50,7 @@ class PersonalityTemplate:
                 personality[d + str(x)] = random.randrange(1,self.max_facet_score)
         return personality
 
+
     def personality_similarity(self, personality_one, personality_two):
         list1 = []
         list2 = []
@@ -57,7 +58,7 @@ class PersonalityTemplate:
             list1.append(personality_one[key])
             list2.append(personality_two[key])
         result = 1 - spatial.distance.cosine(list1, list2)
-        return result
+        return round(result,5)
 
     def get_personality(self, dimension_to_facet_values):
         personality_dictionary = {}
@@ -92,6 +93,14 @@ class HexacoPersonality(PersonalityTemplate):
             if j < 4:
                 text += ' | '
         return text
+
+    def as_list(self, personality):
+        lst = []
+        for d in self.dimensions:
+            for i in range(1,self.number_of_facets+1):
+                k = d + str(i)
+                lst.append(personality[k])
+        return lst
 
     def dimension_text(self,personality):
         text = "("
@@ -141,15 +150,8 @@ def apply_prob_distribution(score, start_prob, score_dif, prob_incr):
     return score
 
 
-def random_boolean_variable(truth_likelyhood):
-    k = random.randrange(1000)
-
-    v = truth_likelyhood* 1000
-
-    if k > v:
-        return False
-
-    return True
+def random_boolean_variable(probability):
+    return random.random() < probability
 
 
 def accuracy_value(value, accuracy):
@@ -176,6 +178,8 @@ def accuracy_value(value, accuracy):
     weights.append(accuracy)
     return random.choices(population=values,weights=weights,k=1)[0] / dif
 
+def similarity(first, second):
+    return round(1 - spatial.distance.cosine([first], [second]),5)
 
 def logistic_update_status_weight(n, c, m, z):
     return c - (c-m) / (1 + math.exp(-0.1 * (100 * n / z - 50)))

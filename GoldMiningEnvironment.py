@@ -6,6 +6,8 @@ import threading
 import time
 from src.Helper import *
 from src.DisplayServer import *
+from src.Testing import *
+from src.Analysis import *
 
 
 # TODO: appraised competency and personality
@@ -57,17 +59,23 @@ class ResourceMiningEnvironment:
     def max_number_of_interactions_for_each_agent(self):
         return self.max_number_of_different_interactions * (len(self.active_agents) - 1)
 
-
     def get_max_number_of_interactions_each_round(self):
-        return int(math.sqrt(self.max_number_of_interactions_for_each_agent()))
-
+        return int(math.pow(self.max_number_of_interactions_for_each_agent(),(1/3)))
 
     def get_minimum_thefts_to_maximise_theft_skill(self):
         return max(round(3*0.25*(len(self.active_agents) - 1)), 5)
 
-    def __init__(self, resource_total, minimum_mine, number_of_rounds):
+    def get_competency_increase_percentage(self):
+        return 0.15/self.max_number_of_interactions_for_each_agent()
+
+    def __init__(self, resource_total, minimum_mine, number_of_rounds, should_test=False):
 
         self.number_of_rounds = number_of_rounds
+
+        self.interaction_types = [Friendship, Mentorship, Help, Theft]
+
+        self.analysis = Analysis(self.interaction_types, self.number_of_rounds)
+
         self.resource_total = resource_total
         self.minimum_mine = minimum_mine
         self.average_number_of_interactions_in_first_window = 20
@@ -92,8 +100,6 @@ class ResourceMiningEnvironment:
         self.display_requests = []
 
         self.active_agents = []
-
-        self.interaction_types = [Friendship, Mentorship, Help, Theft]
 
         num = 0
         for i in self.interaction_types:
@@ -123,6 +129,8 @@ class ResourceMiningEnvironment:
         self.prison_lock = threading.Lock()
         self.prison_for_next_round = []
 
+        self.agent_to_prison_sentence = {}
+
         self.time_per_interaction_session = None
 
         self.current_round = 0
@@ -131,12 +139,19 @@ class ResourceMiningEnvironment:
         self.in_mining_mode = False
         self.in_before_interaction_mode = True
 
+        self.agent_wealth_before_interaction_test = None
+        self.agent_wealth_after_interaction_test = None
+        self.agent_wealth_after_mining_test = None
+
+        self.agent_competency_before_interaction_test = None
+        self.agent_competency_after_interaction_test = None
+
+        self.should_test = should_test
+
     def display(self, code, args):
         self.access_display_lock.acquire()
         self.display_requests.append(ServiceGUI.construct_request(code,args))
         self.access_display_lock.release()
-
-
 
     def get_non_imprisoned_agents(self):
 
@@ -147,12 +162,12 @@ class ResourceMiningEnvironment:
 
     def add_to_prison_for_next_round(self, agent):
         self.prison_lock.acquire()
-        if agent not in self.prison_for_next_round:
-            self.prison_for_next_round.append(agent)
+        self.agent_to_prison_sentence[agent] = 1 if agent not in self.agent_to_prison_sentence else \
+            self.agent_to_prison_sentence[agent] + 1
         self.prison_lock.release()
 
     def set_time_for_interaction_session(self):
-        self.time_per_interaction_session = (self.max_number_of_interactions_for_each_agent() / (7*2*2))/10
+        self.time_per_interaction_session = (self.max_number_of_interactions_for_each_agent() / (7*2*2))/50
 
     def add_agent(self, agent):
         self.to_be_added_agents.append(agent)
@@ -314,11 +329,17 @@ class ResourceMiningEnvironment:
 
     def notify_interaction(self, interaction):
         self.confirmed_interactions.append(interaction)
+        p = interaction.proactive_agent.personality_template.personality_similarity(interaction.proactive_agent.personality,interaction.reactive_agent.personality)
+        a = helper.similarity(interaction.proactive_agent.competency.appraisal_skill,interaction.reactive_agent.competency.appraisal_skill)
+        m = helper.similarity(interaction.proactive_agent.competency.mining_skill,interaction.reactive_agent.competency.mining_skill)
+
+        self.analysis.add_interaction(interaction,(p,m,a),self.current_round)
         self.access_agent_to_all_interactions_lock.acquire()
 
         if interaction.is_success:
             self.agent_to_all_interactions[interaction.proactive_agent][type(interaction)].append(interaction.copy())
             self.agent_to_all_interactions[interaction.reactive_agent][type(interaction)].append(interaction.copy())
+
         self.access_agent_to_all_interactions_lock.release()
 
         prison_copy = self.prison.copy()
@@ -340,13 +361,12 @@ class ResourceMiningEnvironment:
         self.access_promise_exchange_lock.release()
 
     def process_now(self, exchange):
-        x = "Processing: " + str(exchange)
-        #print(x)
         exchange.process()
 
     def include_all_agents(self):
         for agent in self.to_be_added_agents:
             self.include_agent(agent)
+        self.analysis.include_agents(self.to_be_added_agents)
         self.to_be_added_agents.clear()
 
     def estimated_earnings(self, agent):
@@ -356,10 +376,6 @@ class ResourceMiningEnvironment:
             last_earnt = 1.2*self.minimum_mine
 
         return int(last_earnt)
-
-
-
-
 
     def start_interaction_timer(self):
         self.interaction_timer = time.time()
@@ -371,6 +387,9 @@ class ResourceMiningEnvironment:
         return agent_to_wealth
 
     def start_interactions(self):
+        if self.should_test:
+            self.agent_wealth_before_interaction_test = {agent: agent.wealth for agent in self.active_agents}
+            self.agent_competency_before_interaction_test = {agent: agent.competency.copy() for agent in self.active_agents}
         self.in_mining_mode = False
         self.in_before_interaction_mode = False
         self.in_interaction_mode = True
@@ -410,6 +429,10 @@ class ResourceMiningEnvironment:
         return all_stoped
 
     def start_mining_mode(self):
+        if self.should_test:
+            self.agent_wealth_after_interaction_test = {agent: agent.wealth for agent in self.active_agents}
+            self.agent_competency_after_interaction_test = { agent:agent.competency.copy() for agent in self.active_agents}
+
         self.in_interaction_mode = False
         self.in_before_interaction_mode = False
         self.in_mining_mode = True
@@ -436,26 +459,33 @@ class ResourceMiningEnvironment:
                 mine = self.get_mined_amount(agent)
                 self.resource_total -= mine
                 agent_to_mined[agent] = mine
+                self.analysis.add_money_earnings(agent,mine,self.current_round)
                 agent.increase_wealth(amount=mine,should_display=False,should_notify_environment=False,should_notify_all=False)
 
             # improve competency and personality for each agent
             e = agent.personality_template.dimension_percentage(agent.personality, 'X')
             c = agent.personality_template.dimension_percentage(agent.personality, 'C')
 
+            m, a = max(agent.competency.mining_skill,0.001), max(agent.competency.appraisal_skill,0.001)
             improve_m = 1 + (improvement_percentage * c)
             improve_a = 1 + (improvement_percentage * e)
+            m2 = min(m*improve_m,1)
+            a2 = min(a*improve_a,1)
 
-            agent.competency.increase_mining_skills(improve_m)
-            agent.competency.increase_appraisal_skills(improve_a)
+            self.analysis.add_competency_earnings(agent,m2-m,a2-a,self.current_round)
 
+            agent.competency.update(m2,a2)
 
         sorted_x = sorted(agent_to_mined.items(), key=operator.itemgetter(1))
 
         self.display(2, [sorted_x, self.prison.copy()])
-        self.display(4, [self.active_agents.copy()])
+        self.display(4, [[agent.copy() for agent in self.active_agents]])
         self.display(7, [self.resource_total])
 
         agent_to_wealth = {}
+
+        if self.should_test:
+            self.agent_wealth_after_mining_test = { agent:agent.wealth for agent in self.active_agents}
 
         for agent in agent_to_mined:
             agent_to_wealth[agent] = agent.wealth
@@ -464,7 +494,7 @@ class ResourceMiningEnvironment:
         for agent in self.prison:
             agent_to_wealth[agent] = agent.wealth
 
-        self.agent_earnings_after_mining = self.agent_earnings_current_round
+        self.agent_earnings_after_mining = self.agent_earnings_current_round.copy()
 
         self.display(3, [agent_to_wealth])
         self.display(5, ["Adding Bonuses"])
@@ -475,7 +505,7 @@ class ResourceMiningEnvironment:
             for exchange in exchanges:
                 self.process_now(exchange)
 
-        self.display(4, [self.active_agents.copy()])
+        self.display(4, [[agent.copy() for agent in self.active_agents]])
 
         agent_to_wealth = {}
         # Redo appraisals
@@ -492,10 +522,19 @@ class ResourceMiningEnvironment:
 
     def get_environment_ready_for_interactions(self):
         # Last earnings = Current earnings
-        self.agent_earnings_last_round = self.agent_earnings_current_round
-        self.prison = self.prison_for_next_round
-        #print("Prison: ", str(self.prison))
-        self.prison_for_next_round = []
+        self.agent_earnings_last_round = self.agent_earnings_current_round.copy()
+
+        self.prison = list(self.agent_to_prison_sentence.keys())
+
+        to_free = []
+        for agent in self.agent_to_prison_sentence:
+            self.agent_to_prison_sentence[agent] -= 1
+            if self.agent_to_prison_sentence[agent] < 1:
+                to_free.append(agent)
+
+        for agent in to_free:
+            self.agent_to_prison_sentence.pop(agent)
+
         self.agent_earnings_current_round = {}
         for agent in self.active_agents:
             self.agent_earnings_current_round[agent] = 0
@@ -520,9 +559,40 @@ class ResourceMiningEnvironment:
         for agent in self.active_agents:
             agent.stop_running()
 
+    def run_test_on_test_variables(self):
+        if self.should_test:
+            print("Running tests at end of round")
+            agent_wealth_at_end = {agent: agent.wealth for agent in self.active_agents}
+            agent_competency_at_end = {agent: agent.competency.copy() for agent in self.active_agents}
+
+            testInteraction = TestingInteractionSuite(
+                [interaction for interaction in self.confirmed_interactions if interaction.is_success],
+                self.agent_earnings_last_round.copy(),
+                self.agent_wealth_before_interaction_test.copy(),
+                self.agent_wealth_after_interaction_test.copy(),
+                self.get_max_number_of_interactions_each_round(),
+                self.agent_competency_before_interaction_test,
+                self.agent_competency_after_interaction_test,
+                Friendship, Mentorship, Help, Theft,
+                self.minimum_mine, self.get_competency_increase_percentage())
+
+            testRound = TestingRoundSuite(
+                [interaction for interaction in self.confirmed_interactions if interaction.is_success],
+                self.agent_earnings_after_mining.copy(),
+                self.agent_wealth_after_mining_test, agent_wealth_at_end,
+                self.agent_competency_after_interaction_test.copy(),
+                agent_competency_at_end, Friendship, Mentorship, Help, Theft)
+
+            suite = unittest.TestSuite()
+            suite.addTests(testInteraction)
+            suite.addTests(testRound)
+
+            runner = unittest.TextTestRunner()
+            runner.run(suite)
+
     def run(self):
         self.is_running = True
-
+        start = time.time()
 
         while self.is_running:
 
@@ -530,43 +600,39 @@ class ResourceMiningEnvironment:
             if self.in_before_interaction_mode:
                 self.include_all_agents()
                 self.display(5, ["Including Agents"])
-                x = "Included Agents: " + str(self.active_agents.copy())
-                #print(x)
-                self.display(4, [self.active_agents.copy()])
+                self.display(4, [[agent.copy() for agent in self.active_agents]])
                 self.display(3, [self.get_agent_to_wealth()])
                 self.start_interactions()
 
-            # if self.in_interaction_mode:
-            #     x = "Time: " + str(self.elapsed_time())
-            #     #print(x)
-
             if self.in_interaction_mode and self.elapsed_time() > self.time_per_interaction_session:
                 # interaction time has run out - need to get all agents to stop interacting
-                #print("Times up: All agents have stopped")
-                #print("Interactions", [(x,x.is_success) for x in  self.confirmed_interactions] )
                 self.stop_interactions()
-                #print("Done")
 
             if self.in_mining_mode and self.have_all_agents_stopped_interacting():
-                #print("All agents have stopped")
                 # now that all agents have stopped, we can switch to mining mode
+                #x = "Interactions " + str([interaction for interaction in self.confirmed_interactions if interaction.is_success])
+                #print(x)
                 self.start_mining_mode()
-                #print("Handle mining")
                 self.handle_mining()
 
                 x = "Simulated round " + str(self.current_round)
                 print(x)
 
+                self.run_test_on_test_variables()
+
                 if (self.current_round + 1) > self.number_of_rounds:
                     self.stop_running()
+                    print("Elapsed", (time.time() - start))
+                    self.analysis.print_all()
                     return self.display_requests
 
                 self.get_environment_ready_for_interactions()
                 self.stop_mining()
 
         self.stop_running()
-        return self.display_requests
+        print("Elapsed", (time.time() - start))
 
+        return self.display_requests
 
 
 class Interaction:
@@ -630,46 +696,74 @@ class Interaction:
     def is_requestable_by(self, agent):
         is_proactive = agent == self.proactive_agent
         requestable = self.is_request_bidirectional or (not self.is_request_bidirectional and is_proactive)
-        return requestable and self.can_happen()
+        lim = round(self.environment.get_max_number_of_interactions_each_round())
+        return requestable and self.can_happen() and agent.current_number_of_interactions < lim
 
     def other_agents(self, agent):
         if not self.is_present(agent):
             return [self.proactive_agent, self.reactive_agent]
         return [self.other_agent(agent)]
 
+    def exceeded_interaction_limits(self):
+        lim = round(self.environment.get_max_number_of_interactions_each_round())
+        is_ok = not self.is_request_bidirectional and not self.requires_acceptance
+        single = self.proactive_agent.current_number_of_interactions < lim
+        both = single and self.reactive_agent.current_number_of_interactions < lim
+
+        cond = (is_ok and not single) or (not is_ok and not both)
+        return cond
+
     def request(self, agent):
-        self.access_request_lock.acquire()
-        # If already accepted, do nothing
-        if self.is_accepted_or_rejected:
-            self.access_request_lock.release()
-            return None
 
         # Agent cant request it
         if not self.is_requestable_by(agent):
+            return None
+
+        self.access_request_lock.acquire()
+        agent.acquire_interact_lock()
+
+        # If already accepted, do nothing
+        if self.is_accepted_or_rejected:
+            agent.release_interact_lock()
             self.access_request_lock.release()
             return None
 
         # if doesn't need acceptance
-        if not self.requires_acceptance:
+        if not self.exceeded_interaction_limits() and not self.requires_acceptance:
             self.is_success = True
             self.is_accepted_or_rejected = True
             self.requested_agent = agent
             self.accept()
+            agent.release_interact_lock()
             self.access_request_lock.release()
             return None
 
         # If a request already exists then accept
-        if self.requested_agent is not None and not self.is_accepted_or_rejected:
+        if not self.exceeded_interaction_limits() and self.requested_agent is not None and not self.is_accepted_or_rejected:
             self.is_success = True
             self.accept()
+            agent.release_interact_lock()
             self.access_request_lock.release()
             return None
 
-        # If first request, then query other agent for response
-        self.requested_agent = agent
-        responding_agent = self.other_agent(agent)
-        self.respond(responding_agent)
-        self.access_request_lock.release()
+        if not self.exceeded_interaction_limits():
+            # If first request, then query other agent for response
+            self.requested_agent = agent
+            responding_agent = self.other_agent(agent)
+            self.respond(responding_agent)
+            agent.release_interact_lock()
+            self.access_request_lock.release()
+            return None
+
+        # if any agent has gone over its interaction limit
+        if self.exceeded_interaction_limits():
+            self.is_success = False
+            self.is_accepted_or_rejected = True
+            if self.requested_agent is None:
+                self.requested_agent = agent
+            agent.release_interact_lock()
+            self.access_request_lock.release()
+            return None
 
     def can_agent_respond(self, agent):
         is_not_responded = not self.is_accepted_or_rejected
@@ -682,6 +776,7 @@ class Interaction:
         if self.can_agent_respond(agent):
             response = agent.accept_interaction(self)
             if response is not None:
+                response = response and not self.exceeded_interaction_limits()
                 # this means interaction happened
                 self.is_success = response
                 self.accept()
@@ -696,6 +791,8 @@ class Interaction:
         self.environment.notify_interaction(self)
 
         # needs to tell agents involved in interaction that it happened
+        self.proactive_agent.increment_number_of_interactions(self)
+        self.reactive_agent.increment_number_of_interactions(self)
         self.proactive_agent.interaction_happened(self)
         self.reactive_agent.interaction_happened(self)
 
@@ -767,7 +864,8 @@ class Mentorship(Interaction):
         super(Mentorship, self).__init__(proactive_agent,reactive_agent,False,True,True, True, environment)
 
     def exchange(self):
-        mentor_token = MentorshipToken(mentor=self.proactive_agent, mentee=self.reactive_agent,should_notify_all=False,should_display=False,should_notify_environment=True)
+        mentor_token = MentorshipToken(mentor=self.proactive_agent, mentee=self.reactive_agent,percentage=self.environment.get_competency_increase_percentage(), should_notify_all=False,should_display=False,should_notify_environment=True)
+        mentor_token.add_competency(self.reactive_agent)
         exchange = Exchange(self.proactive_agent, self.reactive_agent, mentor_token, mentor_token)
         ResourceMiningEnvironment.process_later(self.environment,self,exchange)
 
@@ -873,15 +971,14 @@ class Theft(Interaction):
         if caught:
             # Put thief in prison
             self.environment.add_to_prison_for_next_round(self.proactive_agent)
+            self.proactive_agent.add_caught_theft_for_this_round(self)
             self.notify_all()
 
     def exchange(self):
-        theft_token = HelpToken(self.proactive_agent, self.reactive_agent, self.stolen_funds, should_notify_all=True,should_display=True,should_notify_environment=True)
+        theft_token = TheftToken(self.proactive_agent, self.reactive_agent, self.stolen_funds, should_notify_all=True,should_display=True,should_notify_environment=True)
         exchange = Exchange(self.proactive_agent, self.reactive_agent, theft_token, theft_token)
         ResourceMiningEnvironment.process_now(self.environment, exchange)
 
-    def notify_all(self):
-        pass
 
     def get_stolen_funds(self):
         return self.stolen_funds
@@ -893,18 +990,7 @@ class Theft(Interaction):
     def determine_if_caught(self):
         if self.is_caught is not None:
             return self.is_caught
-        # More you steal, less likely you are to be caught
-
-        c = self.proactive_agent.personality_template.dimension_percentage(self.proactive_agent.personality,'C')
-        n = self.proactive_agent.personality_template.dimension_percentage(self.proactive_agent.personality, 'E')
-        x = self.proactive_agent.get_number_of_thefts()
-        a = self.environment.get_minimum_thefts_to_maximise_theft_skill()
-
-        # below: probability of being caught
-        p = 0.8 - (0.4*(1+c)*x)/(a*(1+n))
-        p += 0.1
-
-        self.is_caught = random_boolean_variable(p)
+        self.is_caught = random_boolean_variable(self.proactive_agent.caught_stealing())
 
         return self.is_caught
 
@@ -942,10 +1028,8 @@ class FriendshipToken(Token):
         amount *= 0.1
         amount = int(amount)
 
-        x = "Add " + str(amount) + " to " + str(agent)
-        #print(x)
-
         if amount > 0:
+            agent.environment.analysis.add_interaction_money_earnings(agent,agent==self.friend1, amount, Friendship, agent.environment.current_round)
             return ResourceToken.change(amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
 
         return True
@@ -963,23 +1047,22 @@ class MentorshipToken(Token):
         r = "Remove[" + self.mentee.name + "-( EARNS )]"
         return "Mentorship(" + x + "," + r + ")"
 
-    def add_to(self, agent):
+    def add_competency(self, agent):
         # Only add competency to mentee
         if agent == self.mentee:
             CompetencyToken(self.p, self.skill_list,self.should_notify_all,self.should_notify_environment,self.shoud_display).add_to(agent)
 
+    def add_to(self, agent):
         if agent == self.mentor:
             self.amount = self.get_mentee_earnings()
-            x = "Add " + str(self.amount) + " to " + str(agent)
-            #print(x)
             if self.amount > 0:
+                agent.environment.analysis.add_interaction_money_earnings(agent, True, self.amount,
+                                                                          Mentorship, agent.environment.current_round)
                 return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
 
     def get_mentee_earnings(self):
         if self.amount is None:
             self.amount = ResourceMiningEnvironment.get_agent_earnings_after_mining(self.mentee.environment, self.mentee)
-            x = str(self.mentee) + " earned " + str(self.amount)
-            #print(x)
             self.amount *= 0.25
             self.amount = int(self.amount)
         return self.amount
@@ -989,14 +1072,14 @@ class MentorshipToken(Token):
         if not self.mentee == agent:
             return True
         self.amount = self.get_mentee_earnings()
-        x = "Remove " + str(self.amount) + " from " + str(agent)
-        #print(x)
         if self.amount > 0:
+            agent.environment.analysis.add_interaction_money_earnings(agent, False, -self.amount,
+                                                                      Mentorship, agent.environment.current_round)
             return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
 
         return True
 
-    def __init__(self, mentor, mentee, should_notify_all=True, should_notify_environment=True, should_display=True):
+    def __init__(self, mentor, mentee, percentage, should_notify_all=True, should_notify_environment=True, should_display=True):
         super(MentorshipToken, self).__init__(should_notify_all,should_notify_environment,should_display)
         # will return list of skills better than mentee and difference for each of those skills
         self.skill_list, mp, ap = mentor.competency.better_skills(mentee.competency)
@@ -1008,7 +1091,7 @@ class MentorshipToken(Token):
         else:
             self.p = mp if (mp is not None and (ap is None or ap >= mp)) else ap
             # increasing by 15% of the smallest difference
-            self.p /= 15
+            self.p *= percentage
 
 
 class TheftToken(Token):
@@ -1019,16 +1102,16 @@ class TheftToken(Token):
 
     def add_to(self, agent):
         if agent == self.thief:
-            x = "Add " + str(self.amount) + " to " + str(agent)
-            #print(x)
             if self.amount > 0:
+                agent.environment.analysis.add_interaction_money_earnings(agent, True, self.amount,
+                                                                          Theft, agent.environment.current_round)
                 return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
 
     def remove_from(self, agent):
         if agent == self.victim:
-            x = "Remove " + str(self.amount) + " from " + str(agent)
-            #print(x)
             if self.amount > 0:
+                agent.environment.analysis.add_interaction_money_earnings(agent, False, -self.amount,
+                                                                          Theft, agent.environment.current_round)
                 return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
 
     def __init__(self, thief, victim, amount, should_notify_all=True, should_notify_environment=True, should_display=True):
@@ -1046,16 +1129,16 @@ class HelpToken(Token):
 
     def add_to(self, agent):
         if agent == self.helped:
-            x = "Add " + str(self.amount) + " to " + str(agent)
-            #print(x)
             if self.amount > 0:
+                agent.environment.analysis.add_interaction_money_earnings(agent, False, self.amount,
+                                                                          Help, agent.environment.current_round)
                 return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
 
     def remove_from(self, agent):
         if agent == self.helper:
-            x = "Remove " + str(self.amount) + " from " + str(agent)
-            #print(x)
             if self.amount > 0:
+                agent.environment.analysis.add_interaction_money_earnings(agent, True, -self.amount,
+                                                                          Help, agent.environment.current_round)
                 return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
 
     def __init__(self, helper, helped, amount, should_notify_all=True, should_notify_environment=True, should_display=True):
@@ -1092,24 +1175,26 @@ class CompetencyToken(Token):
         return "Competency(" + x + ')'
 
     def remove_from(self, agent):
-        p = (100 - self.percentage) / 100
-        return self.change_competency(p, agent)
+        return self.change_competency(self.amount, agent)
 
-    def change_competency(self,p, agent):
+    def change_competency(self, p, agent):
         for s in self.skill_list:
             if s == "appraisal":
+                agent.environment.analysis.add_interaction_comp_earnings(agent, False, 0, p,
+                                                                         Mentorship, agent.environment.current_round)
                 agent.competency.increase_appraisal_skills(p)
             else:
+                agent.environment.analysis.add_interaction_comp_earnings(agent, False, p, 0,
+                                                                         Mentorship, agent.environment.current_round)
                 agent.competency.increase_mining_skills(p)
         return True
 
     def add_to(self, agent):
-        p = (self.percentage + 100)/100
-        return self.change_competency(p,agent)
+        return self.change_competency(self.amount,agent)
 
-    def __init__(self, percentage, skill_list, should_notify_all=True, should_notify_environment=True, should_display=True):
+    def __init__(self, amount, skill_list, should_notify_all=True, should_notify_environment=True, should_display=True):
         super(CompetencyToken, self).__init__(should_notify_all=True, should_notify_environment=True, should_display=True)
-        self.percentage = percentage
+        self.amount = amount
         self.skill_list = skill_list
 
 
@@ -1126,7 +1211,6 @@ class Exchange:
 
     def __repr__(self):
         return "Exchange: " + "[" + str(self.from_agent) + "," + str(self.to_agent) + "],[" + str(self.lost_token) + " " + str(self.gained_token) + "]"
-
 
     # during exchange: from_agent loses lost_token and to_agent gains gained_token
     def __init__(self, from_agent, to_agent, lost_token, gained_token):

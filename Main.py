@@ -69,12 +69,22 @@ def main():
     t1.start()
     gui_server.run()
 
-
 def main2():
+    environment = ResourceMiningEnvironment(10000, 10,40)
+    start_environment2(environment)
+    requests = environment.run()
+    gui = SocialGroupGUI(1400, 800)
+
+    for request in requests:
+        ServiceGUI.process_request(gui, request)
+
+
+def main3():
     environment = ResourceMiningEnvironment(10000, 10,5)
     start_environment2(environment)
     requests = environment.run()
     gui = SocialGroupGUI(1400, 800)
+
 
 
     agents = []
