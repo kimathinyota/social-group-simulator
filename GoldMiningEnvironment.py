@@ -74,7 +74,7 @@ class ResourceMiningEnvironment:
 
         self.interaction_types = [Friendship, Mentorship, Help, Theft]
 
-        self.analysis = Analysis(self.interaction_types, self.number_of_rounds)
+        self.analysis = Analysis()
 
         self.resource_total = resource_total
         self.minimum_mine = minimum_mine
@@ -88,6 +88,8 @@ class ResourceMiningEnvironment:
 
         self.lock_to_access_possible_interactions = threading.Lock()
         self.agent_to_possible_interactions = {}
+        self.all_requested_interactions = []
+        self.lock_requested_interactions = threading.Lock()
 
         self.confirmed_interactions = []
 
@@ -196,10 +198,12 @@ class ResourceMiningEnvironment:
             for type in self.interaction_types:
                 interactions_for_type = []
                 i = self.construct_interaction(agent,a,type)
-                interactions_for_type.append(i)
-                if not i.is_single_role:
-                    i = self.construct_interaction(a, agent, type)
+                if i is not None:
                     interactions_for_type.append(i)
+                    if not i.is_single_role:
+                        i = self.construct_interaction(a, agent, type)
+                        if i is not None:
+                            interactions_for_type.append(i)
 
                 # interactions_for_type contains all possible interactions of this type involving agents a and agent
 
@@ -538,14 +542,31 @@ class ResourceMiningEnvironment:
         self.agent_earnings_current_round = {}
         for agent in self.active_agents:
             self.agent_earnings_current_round[agent] = 0
+
+        #Reset all requested interactions
         self.confirmed_interactions = []
         self.interactions_to_promised_exchanges = {}
 
         # Reset all possible interactions
-        for agent in self.active_agents:
-            if agent in self.agent_to_possible_interactions:
-                for interaction in self.agent_to_possible_interactions[agent]:
-                    Interaction.reset(interaction)
+        for interaction in self.all_requested_interactions:
+            interaction.reset()
+
+
+        # for agent in self.active_agents:
+        #     if agent in self.agent_to_possible_interactions:
+        #         type_to_interactions = self.agent_to_possible_interactions[agent]
+        #         for type in type_to_interactions:
+        #             interactions = type_to_interactions[type]
+        #             for interaction in interactions:
+        #                 Interaction.reset(interaction)
+
+
+    def notify_requested_interaction(self, interaction):
+        self.lock_requested_interactions.acquire()
+        if interaction not in self.all_requested_interactions:
+            self.all_requested_interactions.append(interaction)
+        self.lock_requested_interactions.release()
+
 
     def get_agent_earnings_list(self):
 
@@ -616,15 +637,14 @@ class ResourceMiningEnvironment:
                 self.handle_mining()
 
                 x = "Simulated round " + str(self.current_round)
-                print(x)
+                #print(x)
 
                 self.run_test_on_test_variables()
 
                 if (self.current_round + 1) > self.number_of_rounds:
                     self.stop_running()
                     print("Elapsed", (time.time() - start))
-                    self.analysis.print_all()
-                    return self.display_requests
+                    return self.display_requests, self.analysis
 
                 self.get_environment_ready_for_interactions()
                 self.stop_mining()
@@ -632,7 +652,7 @@ class ResourceMiningEnvironment:
         self.stop_running()
         print("Elapsed", (time.time() - start))
 
-        return self.display_requests
+        return self.display_requests, self.analysis
 
 
 class Interaction:
@@ -728,6 +748,7 @@ class Interaction:
             self.access_request_lock.release()
             return None
 
+        ResourceMiningEnvironment.notify_requested_interaction(self.environment,self)
         # if doesn't need acceptance
         if not self.exceeded_interaction_limits() and not self.requires_acceptance:
             self.is_success = True
@@ -891,7 +912,7 @@ class Help(Interaction):
     is_single_role = False
 
     def reset(self):
-        super(Theft, self).reset()
+        super(Help, self).reset()
         self.helping_funds = None
 
     def determine_helping_funds(self):

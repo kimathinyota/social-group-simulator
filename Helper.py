@@ -21,6 +21,11 @@ class PersonalityTemplate:
             score += (personality[f] if personality[f] is not None else 0)
         return score/total
 
+    def set_all_facets_in_dimension(self, personality, dimension, value):
+        for x in range(1, self.number_of_facets + 1):
+            personality[dimension + str(x)] = value
+
+
     def dimension_total(self, personality, dimension_letter):
         tot = 0
         for x in range(1, self.number_of_facets + 1):
