@@ -1,4 +1,5 @@
 import mysql.connector
+from src.GoldMiningEnvironment import *
 
 
 class Analysis:
@@ -55,7 +56,11 @@ class Analysis:
             self.connect_to_db()
         for query in self.queries:
             sql, val = query
-            self.mycursor.execute(sql,val)
+            try:
+                self.mycursor.execute(sql,val)
+            except mysql.connector.errors.Error:
+                pass
+
         self.mydb.commit()
         self.close()
         print("Finished executing queries")
@@ -160,8 +165,8 @@ class Analysis:
         x, y, z = [], [], []
         for r in result:
             a, b, c = r
-            x.append(a)
-            y.append(b)
+            x.append(float(a))
+            y.append(float(b))
             z.append(float(c))
         self.close()
         return x, y, z
@@ -191,14 +196,227 @@ class Analysis:
 
         self.mycursor.execute(sql)
         result = self.mycursor.fetchall()
-        print(result)
         x, y = [], []
         for r in result:
             a, b = r
-            x.append(a)
+            x.append(float(a))
             y.append(float(b))
         self.close()
         return x, y
+
+    def get_x_vs_round_to_comp(self, agent_variable, agent_name):
+        if not self.is_connected:
+            self.connect_to_db()
+        sql = " SELECT "+agent_variable+", round, AVG(tot)" \
+              " FROM  (SELECT K.*, SUM(amount) AS tot" \
+              "        FROM (SELECT T.*, R.round, (R.appraisal + R.mining)  AS amount" \
+              "              FROM interactionDB.CompetencyEarnings AS R" \
+              "              LEFT JOIN (SELECT agentID, agentName, " \
+              "                               (H1 + H2 + H3 + H4) AS PH," \
+              "                               (E1 + E2 + E3 + E4) AS PE," \
+              "                               (X1 + X2 + X3 + X4) AS PX," \
+              "                               (A1 + A2 + A3 + A4) AS PA," \
+              "                               (C1 + C2 + C3 + C4) AS PC," \
+              "                               (O1 + O2 + O3 + O4) AS PO," \
+              "                               initialMining AS CM," \
+              "                               initialAppraisal AS CA" \
+              "                         FROM interactionDB.Agent) AS T" \
+              "              ON T.agentID = R.agentID" \
+              "              WHERE T.agentName = \""+agent_name+"\") K" \
+              "        GROUP BY round, agentID) AS O" \
+              " GROUP BY round, " + agent_variable
+        self.mycursor.execute(sql)
+        result = self.mycursor.fetchall()
+        x, y, z = [], [], []
+        for r in result:
+            a, b, c = r
+            x.append(float(a))
+            y.append(float(b))
+            z.append(float(c))
+        self.close()
+        return x, y, z
+
+    def get_x_vs_total_comp(self, agent_variable, agent_name):
+        if not self.is_connected:
+            self.connect_to_db()
+        sql = "SELECT "+agent_variable+", AVG(tot)" \
+              "FROM  (SELECT "+agent_variable+", SUM(amount) AS tot " \
+              "       FROM (SELECT T.*, R.round, (R.appraisal + R.mining) AS amount " \
+              "             FROM interactionDB.CompetencyEarnings AS R " \
+              "             LEFT JOIN (SELECT agentID, agentName, " \
+              "                              (H1 + H2 + H3 + H4) AS PH, " \
+              "                              (E1 + E2 + E3 + E4) AS PE, " \
+              "                              (X1 + X2 + X3 + X4) AS PX, " \
+              "                              (A1 + A2 + A3 + A4) AS PA, " \
+              "                              (C1 + C2 + C3 + C4) AS PC, " \
+              "                              (O1 + O2 + O3 + O4) AS PO, " \
+              "                              initialMining AS CM, " \
+              "                              initialAppraisal AS CA " \
+              "             FROM interactionDB.Agent) AS T " \
+              "             ON T.agentID = R.agentID " \
+              "             WHERE T.agentName = \""+agent_name+"\") K " \
+              "       GROUP BY agentID) AS GB " \
+              "GROUP BY " + agent_variable
+        self.mycursor.execute(sql)
+        result = self.mycursor.fetchall()
+        x, y = [], []
+        for r in result:
+            a, b = r
+            x.append(float(a))
+            y.append(float(b))
+        self.close()
+        return x, y
+
+    def get_interaction_vs_round_to_earn(self):
+        if not self.is_connected:
+            self.connect_to_db()
+        sql = " SELECT round, interactionType, isProactive, AVG(tot) FROM" \
+              " (SELECT round, interactionType, isProactive, amount, agentID, agentName, AVG(tot) AS tot FROM" \
+              " (SELECT round, interactionType, isProactive, amount, k.*, SUM(amount) AS tot" \
+              " FROM interactionDB.InteractionWealthEarnings AS t" \
+              " LEFT JOIN (SELECT agentID, agentName," \
+              " (H1 + H2 + H3 + H4) AS H," \
+              " (E1 + E2 + E3 + E4) AS E," \
+              " (X1 + X2 + X3 + X4) AS X," \
+              " (A1 + A2 + A3 + A4) AS A," \
+              " (C1 + C2 + C3 + C4) AS C," \
+              " (O1 + O2 + O3 + O4) AS O," \
+              " initialMining AS mining," \
+              " initialAppraisal AS appraisal" \
+              " FROM interactionDB.Agent) AS k" \
+              " ON k.agentID = t.agentID" \
+              " GROUP BY agentID, round, interactionType, isProactive) AS j" \
+              " GROUP BY round, interactionType, isProactive, H, E, X, A, C, O, mining, appraisal) AS cool	" \
+              " GROUP BY round, interactionType, isProactive"
+
+        self.mycursor.execute(sql)
+        result = self.mycursor.fetchall()
+
+        friendship_round_to_total = {}
+
+        labels, x, y = [], [], []
+        for r in result:
+            rnd, iT, iP, t = r
+            if iT == "Friendship":
+                tot = friendship_round_to_total[rnd] if rnd in friendship_round_to_total else 0
+                tot += float(t)
+                friendship_round_to_total[rnd] = tot
+            else:
+                labels.append(str((iT, iP)))
+                x.append(rnd)
+                y.append(float(t))
+
+        for rnd in friendship_round_to_total:
+            labels.append("Friendship")
+            x.append(rnd)
+            y.append(friendship_round_to_total[rnd])
+        self.close()
+        return labels, x, y
+
+    def get_interaction_vs_total_earn(self):
+        if not self.is_connected:
+            self.connect_to_db()
+        sql = " SELECT interactionType, isProactive, SUM(tot)" \
+              " FROM   (SELECT round, interactionType, isProactive, amount, agentID, agentName, AVG(tot) AS tot " \
+              " FROM (SELECT round, interactionType, isProactive, amount, k.*, SUM(amount) AS tot" \
+              " FROM interactionDB.InteractionWealthEarnings AS t" \
+              " LEFT JOIN (SELECT agentID, agentName," \
+              " (H1 + H2 + H3 + H4) AS H," \
+              " (E1 + E2 + E3 + E4) AS E," \
+              " (X1 + X2 + X3 + X4) AS X," \
+              " (A1 + A2 + A3 + A4) AS A," \
+              " (C1 + C2 + C3 + C4) AS C," \
+              " (O1 + O2 + O3 + O4) AS O," \
+              " initialMining AS mining," \
+              " initialAppraisal AS appraisal" \
+              " FROM interactionDB.Agent) AS k" \
+              " ON k.agentID = t.agentID" \
+              " GROUP BY agentID, round, interactionType, isProactive) AS j" \
+              " GROUP BY round, interactionType, isProactive, H, E, X, A, C, O, mining, appraisal) AS cool	" \
+              " GROUP BY interactionType, isProactive"
+
+        self.mycursor.execute(sql)
+        result = self.mycursor.fetchall()
+        labels = []
+        values = []
+        friendship_total = 0
+        for r in result:
+            iT, iP, t = r
+            if iT == "Friendship":
+                friendship_total += float(t)
+            else:
+                label = iT + "/" + ("P" if iP else "R")
+                labels.append(label)
+                values.append(float(t))
+        labels.append("Friendship")
+        values.append(friendship_total)
+        self.close()
+        return labels, values
+
+    def get_x_vs_interaction_count(self, agent_variable, agent_name, interaction_type, is_proactive, should_close=True, should_open=True):
+        if should_open and not self.is_connected:
+            self.connect_to_db()
+        temp = "pro" if is_proactive else "re"
+        sql = " SELECT "+agent_variable+", round(AVG(tot)) " \
+              " FROM	(SELECT k.*, COUNT(agentID) AS tot " \
+              " FROM interactionDB.Interactions " \
+              " LEFT JOIN (SELECT agentID, agentName, " \
+              " (H1 + H2 + H3 + H4) AS PH, " \
+              " (E1 + E2 + E3 + E4) AS PE, " \
+              " (X1 + X2 + X3 + X4) AS PX, " \
+              " (A1 + A2 + A3 + A4) AS PA, " \
+              " (C1 + C2 + C3 + C4) AS PC, " \
+              " (O1 + O2 + O3 + O4) AS PO, " \
+              " initialMining AS CM, " \
+              " initialAppraisal AS CA " \
+              " FROM interactionDB.Agent) AS k " \
+              " ON " + temp + "activeAgentID = agentID " \
+              " WHERE agentName = \"" + agent_name + "\" and interactionType = \"" + interaction_type + "\" " \
+              " GROUP BY agentID) AS t" \
+              " GROUP BY " + agent_variable
+
+        self.mycursor.execute(sql)
+        result = self.mycursor.fetchall()
+        x, y = [], []
+        for r in result:
+            a, b = r
+            x.append(float(a))
+            y.append(float(b))
+
+        if should_close:
+            self.close()
+        return x, y
+
+    def get_x_vs_interaction_choices(self, agent_variable, agent_name):
+
+        friendship_reactive = self.get_x_vs_interaction_count(agent_variable,agent_name, "Friendship", False, False, True)
+        friendship_proactive = self.get_x_vs_interaction_count(agent_variable, agent_name, "Friendship", True, False, False)
+
+        a, a2 = friendship_reactive[1], friendship_proactive[1]
+
+        na = []
+        for i in range(len(a)):
+            f = a[i] if i < len(a) else 0
+            s = a2[i] if i < len(a2) else 0
+            na.append(f + s)
+
+        friendship_total = friendship_reactive[0], na
+
+        mentorship_proactive = self.get_x_vs_interaction_count(agent_variable, agent_name, "Mentorship", True, False,
+                                                               False)
+        mentorship_reactive = self.get_x_vs_interaction_count(agent_variable, agent_name, "Mentorship", False, False,
+                                                               False)
+
+        theft_proactive = self.get_x_vs_interaction_count(agent_variable, agent_name, "Theft", True, False, False)
+        theft_reactive = self.get_x_vs_interaction_count(agent_variable, agent_name, "Theft", False, False, False)
+
+        help_proactive = self.get_x_vs_interaction_count(agent_variable, agent_name, "Help", True, False, False)
+        help_reactive = self.get_x_vs_interaction_count(agent_variable, agent_name, "Help", False, True, True)
+
+        return (friendship_total, mentorship_proactive, mentorship_reactive, theft_proactive, theft_reactive,
+                help_proactive, help_reactive)
+
+
 
 
 

@@ -252,7 +252,7 @@ class ResourceMiningEnvironment:
         for interaction_type in interactions_copy:
             # cant repeat a confirmed interaction
             for interaction in interactions_copy[interaction_type]:
-                interaction.initiate_interaction()
+                Interaction.initiate_interaction(interaction)
                 neither_in_prison = interaction.proactive_agent not in self.prison and interaction.reactive_agent not in self.prison
                 if neither_in_prison and interaction.is_requestable_by(agent) and not (interaction in self.confirmed_interactions):
                     requestable_interactions.append(interaction)
@@ -671,6 +671,8 @@ class Interaction:
         return cool
 
     def __init__(self, proactive_agent, reactive_agent, single_role, request_bidirectional, requires_acceptance, should_always_notify_all, environment):
+        if proactive_agent is None or reactive_agent is None:
+            raise ValueError("Interaction given null agent value")
         self.proactive_agent = proactive_agent
         self.reactive_agent = reactive_agent
         self.environment = environment
@@ -729,11 +731,14 @@ class Interaction:
         is_ok = not self.is_request_bidirectional and not self.requires_acceptance
         single = self.proactive_agent.current_number_of_interactions < lim
         both = single and self.reactive_agent.current_number_of_interactions < lim
-
         cond = (is_ok and not single) or (not is_ok and not both)
         return cond
 
     def request(self, agent):
+
+        # Both agents need to be interacting
+        if not(self.proactive_agent.is_interacting and self.reactive_agent.is_interacting):
+            return None
 
         # Agent cant request it
         if not self.is_requestable_by(agent):
@@ -947,6 +952,8 @@ class Help(Interaction):
         ResourceMiningEnvironment.process_now(self.environment,exchange)
 
     def can_happen(self):
+        if self.helping_funds is None:
+            self.determine_helping_funds()
         # proactive agent has enough funds to help
         return self.proactive_agent.wealth > self.helping_funds
 
