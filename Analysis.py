@@ -267,6 +267,31 @@ class Analysis:
         self.close()
         return x, y
 
+    def get_interaction_to_total(self):
+        if not self.is_connected:
+            self.connect_to_db()
+        sql = " SELECT interactionType, ROUND(SUM(total)) FROM " \
+              " (SELECT k.*, AVG(tot) AS total FROM" \
+              " (SELECT i.*, r.agentName AS aN, t.agentName as aN2, COUNT(round) AS tot FROM interactionDB.Interactions AS i" \
+              " JOIN interactionDB.Agent AS r " \
+              " ON r.agentID = proactiveAgentID" \
+              " JOIN interactionDB.Agent AS t " \
+              " ON t.agentID = reactiveAgentID " \
+              " GROUP BY i.proactiveAgentID, i.reactiveAgentID, interactionType) AS k " \
+              " GROUP BY aN, aN2) AS l " \
+              " GROUP BY interactionType "
+
+        self.mycursor.execute(sql)
+        result = self.mycursor.fetchall()
+        labels = []
+        values = []
+        for r in result:
+            iT, t = r
+            labels.append(iT)
+            values.append(float(t))
+        return labels, values
+        self.close()
+
     def get_interaction_vs_round_to_earn(self):
         if not self.is_connected:
             self.connect_to_db()

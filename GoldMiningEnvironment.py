@@ -252,7 +252,7 @@ class ResourceMiningEnvironment:
         for interaction_type in interactions_copy:
             # cant repeat a confirmed interaction
             for interaction in interactions_copy[interaction_type]:
-                Interaction.initiate_interaction(interaction)
+                interaction.initiate_interaction()
                 neither_in_prison = interaction.proactive_agent not in self.prison and interaction.reactive_agent not in self.prison
                 if neither_in_prison and interaction.is_requestable_by(agent) and not (interaction in self.confirmed_interactions):
                     requestable_interactions.append(interaction)

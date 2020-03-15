@@ -3,7 +3,9 @@ from src.DisplayServer import *
 from src.GoldMiningEnvironment import *
 import threading
 import matplotlib.pyplot as plt
+from numpy.polynomial.polynomial import polyfit
 import numpy as np
+import scipy.stats
 import json
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.cm as cm
@@ -156,9 +158,16 @@ class Experiment:
     def plot_3dB(X, Y, Z, xlabel="X", ylabel="Y", zlabel="Z"):
         title = xlabel + " vs " + ylabel + " vs " + zlabel
         unique = []
-        for x in X:
-            if x not in unique:
-                unique.append(x)
+
+        x_to_y_z = {}
+
+        for i in range(len(X)):
+            x = X[i]
+            res = x_to_y_z[x] if x in x_to_y_z else [[],[]]
+            res[0].append(Y[i])
+            res[1].append(Z[i])
+
+        unique = list(x_to_y_z.keys())
 
         colours = Experiment.unique_colours(len(unique))
         x_to_colour = {unique[i]: colours[i] for i in range(len(unique))}
@@ -183,6 +192,68 @@ class Experiment:
         return fig
 
     @staticmethod
+    def plot_3d_special(X, Y, Z, xlabel="X", ylabel="Y", zlabel="Z", is_x_discrete=True, should_include_lob=True, should_include_corr=True):
+        title = xlabel + " vs " + ylabel + " vs " + zlabel
+        x_to_y_z = {}
+        for i in range(len(X)):
+            x = X[i]
+            res = x_to_y_z[x] if x in x_to_y_z else [[], []]
+            res[0].append(Y[i])
+            res[1].append(Z[i])
+            x_to_y_z[x] = res
+
+        unique = list(x_to_y_z.keys())
+        colours = Experiment.unique_colours(len(unique))
+        x_to_colour = {unique[i]: colours[i] for i in range(len(unique))}
+
+        if is_x_discrete:
+            x_to_position = {unique[i - 1]: i for i in range(1, len(unique) + 1)}
+        else:
+            x_to_position = {x:x for x in unique}
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_zlabel(zlabel)
+        ax.set_title(title)
+
+        for x in x_to_y_z:
+            Y, Z, = x_to_y_z[x][0], x_to_y_z[x][1]
+            p, color = x_to_position[x], x_to_colour[x]
+            X = [p for i in range(len(Y))]
+
+            if should_include_lob:
+                ax.scatter(X, Y, Z,color=color)
+            else:
+                ax.scatter(X, Y, Z, color=color, label=x)
+
+            if should_include_lob:
+                X, Y, Z = tuple(np.array(i) for i in [X, Y, Z])
+                b, m = polyfit(Y, Z, 1)
+                Z = b + m * Y
+                label = str(x)
+                if should_include_corr:
+                    r, rs, p = Experiment.get_correlation_data(Y, Z)
+                    label += " " + str((rs,r,p))
+                ax.plot(X, Y, Z, color=color, label=label)
+
+        if (not is_x_discrete) or should_include_corr:
+            plt.legend(loc='upper left', title="Data (rs, r, p)", numpoints=1, ncol=3, fontsize=8, bbox_to_anchor=(0, 0))
+        plt.show()
+        return fig
+
+
+    @staticmethod
+    def get_correlation_data(X, Y):
+        r = round(scipy.stats.pearsonr(X, Y)[0], 5)
+        rs, p = scipy.stats.spearmanr(X, Y)
+        rs = round(rs, 5)
+        p = round(rs, 5)
+        return r, rs, p
+
+
+    @staticmethod
     def plot_2d(X, Y, xlabel="X", ylabel="Y"):
         title = xlabel + " vs " + ylabel
         fig = plt.figure()
@@ -191,7 +262,33 @@ class Experiment:
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         X, Y = tuple(np.array(i) for i in [X, Y])
+
+        print("X", X)
+        print("Y", Y)
         ax.scatter(X, Y)
+        b, m = polyfit(X,Y,1)
+        print("(Slope,Intercept)", (m, b))
+
+        Y = b + m * X
+
+        print("Best Fit", X, Y)
+
+        ax.plot(X, Y)
+
+        r, rs, p = Experiment.get_correlation_data(X, Y)
+
+        txt = " rs = " + str(rs) + ",  p = " + str(p) + ",  r = " + str(r)
+        fig.text(0.01, 0.99, txt, ha='left', va='top',fontsize="large")
+
+
+
+
+
+
+
+
+
+        plt.show()
         return fig
 
     @staticmethod
@@ -397,16 +494,22 @@ class Experiment:
         x, y = analysis.get_interaction_vs_total_earn()
         d2 = {"data": (x, y), "labels": ("Interaction Type", "Total Gold Earned")}
 
+        x, y = analysis.get_interaction_to_total()
+        d3 = {"data": (x, y), "labels": ("Interaction Type", "Total Number of Rounds")}
+
         data = {
             '3DB': [d1],
-            '2DB': [d2]
+            '2DB': [d2, d3]
         }
         return data
+
+
 
     @staticmethod
     def estimated_time_seconds(number_of_rounds):
         s = 32
         return s * number_of_rounds/40
+
 
     @staticmethod
     def run_all_experiments(total_number_of_agents, agent_variable_experiment_directory,
