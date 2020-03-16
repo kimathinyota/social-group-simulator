@@ -106,41 +106,6 @@ class Experiment:
         return agent
 
 
-
-    @staticmethod
-    def plot_3d2(X, Y, Z, xlabel="X", ylabel="Y", zlabel="Z"):
-        title = xlabel + " vs " + ylabel + " vs " + zlabel
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        X, Y, Z = tuple(np.array([i]) for i in [X, Y, Z])
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_zlabel(zlabel)
-        ax.set_title(title)
-        ax.plot_wireframe(X, Y, Z)
-        return fig
-
-    @staticmethod
-    def plot_3d(X, Y, Z, xlabel="X", ylabel="Y", zlabel="Z"):
-        title = xlabel + " vs " + ylabel + " vs " + zlabel
-        unique = []
-        for x in X:
-            if x not in unique:
-                unique.append(x)
-        colours = Experiment.unique_colours(len(unique))
-        x_to_colour = {unique[i]: colours[i] for i in range(len(unique))}
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_zlabel(zlabel)
-        ax.set_title(title)
-
-        for i in range(len(X)):
-            c = x_to_colour[X[i]]
-            ax.scatter(X[i], Y[i], Z[i], color=c)
-        return fig
-
     @staticmethod
     def unique_colours(n):
         colours = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF", "000000",
@@ -153,46 +118,8 @@ class Experiment:
         "#E00000", "#00E000", "#0000E0", "#E0E000", "#E000E0", "#00E0E0", "#E0E0E0"]
         return colours[0:n]
 
-
     @staticmethod
-    def plot_3dB(X, Y, Z, xlabel="X", ylabel="Y", zlabel="Z"):
-        title = xlabel + " vs " + ylabel + " vs " + zlabel
-        unique = []
-
-        x_to_y_z = {}
-
-        for i in range(len(X)):
-            x = X[i]
-            res = x_to_y_z[x] if x in x_to_y_z else [[],[]]
-            res[0].append(Y[i])
-            res[1].append(Z[i])
-
-        unique = list(x_to_y_z.keys())
-
-        colours = Experiment.unique_colours(len(unique))
-        x_to_colour = {unique[i]: colours[i] for i in range(len(unique))}
-        x_to_position = {unique[i-1]: i for i in range(1, len(unique)+1)}
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_zlabel(zlabel)
-        ax.set_title(title)
-        drawn_labels = []
-        for i in range(len(X)):
-            c = x_to_colour[X[i]]
-            l = str(X[i])
-            p = x_to_position[X[i]]
-            if l not in drawn_labels:
-                ax.scatter(p, Y[i], Z[i], color=c, label=l)
-                drawn_labels.append(l)
-            else:
-                ax.scatter(p, Y[i], Z[i], color=c)
-        plt.legend(loc='upper left', numpoints=1, ncol=3, fontsize=8, bbox_to_anchor=(0, 0))
-        return fig
-
-    @staticmethod
-    def plot_3d_special(X, Y, Z, xlabel="X", ylabel="Y", zlabel="Z", is_x_discrete=True, should_include_lob=True, should_include_corr=True):
+    def plot_3d(X, Y, Z, xlabel="X", ylabel="Y", zlabel="Z", is_x_discrete=True, should_include_lob=True, should_include_corr=True, show=True, should_draw=True):
         title = xlabel + " vs " + ylabel + " vs " + zlabel
         x_to_y_z = {}
         for i in range(len(X)):
@@ -211,95 +138,93 @@ class Experiment:
         else:
             x_to_position = {x:x for x in unique}
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_zlabel(zlabel)
-        ax.set_title(title)
+        if should_draw:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.set_zlabel(zlabel)
+            ax.set_title(title)
+
+        x_to_correlation = {}
 
         for x in x_to_y_z:
             Y, Z, = x_to_y_z[x][0], x_to_y_z[x][1]
             p, color = x_to_position[x], x_to_colour[x]
             X = [p for i in range(len(Y))]
 
-            if should_include_lob:
-                ax.scatter(X, Y, Z,color=color)
-            else:
-                ax.scatter(X, Y, Z, color=color, label=x)
+            if should_draw:
+                if should_include_lob:
+                    ax.scatter(X, Y, Z,color=color)
+                else:
+                    ax.scatter(X, Y, Z, color=color, label=x)
 
             if should_include_lob:
                 X, Y, Z = tuple(np.array(i) for i in [X, Y, Z])
-                b, m = polyfit(Y, Z, 1)
-                Z = b + m * Y
+                Xn,Yn, Zn = X.copy(), Y.copy(), Z.copy()
+                if should_draw:
+                    b, m = polyfit(Y, Z, 1)
+                    Z = b + m * Y
                 label = str(x)
                 if should_include_corr:
-                    r, rs, p = Experiment.get_correlation_data(Y, Z)
-                    label += " " + str((rs,r,p))
-                ax.plot(X, Y, Z, color=color, label=label)
+                    r, rs, ps, pr = Experiment.get_correlation_data(Yn, Zn)
+                    label += " " + str((rs,r,ps,pr))
+                    x_to_correlation[x] = r, rs, ps, pr
+                if should_draw:
+                    ax.plot(X, Y, Z, color=color, label=label)
 
-        if (not is_x_discrete) or should_include_corr:
-            plt.legend(loc='upper left', title="Data (rs, r, p)", numpoints=1, ncol=3, fontsize=8, bbox_to_anchor=(0, 0))
-        plt.show()
-        return fig
+        if should_draw and ((not is_x_discrete) or should_include_corr):
+            plt.legend(loc='upper left', title=xlabel + " ($r_s$, r, $p_s$, $p_r$)", numpoints=1, ncol=3, fontsize=8, bbox_to_anchor=(0, 0))
+        if should_draw and show:
+            plt.show()
+        return x_to_correlation
 
 
     @staticmethod
     def get_correlation_data(X, Y):
-        r = round(scipy.stats.pearsonr(X, Y)[0], 5)
-        rs, p = scipy.stats.spearmanr(X, Y)
-        rs = round(rs, 5)
-        p = round(rs, 5)
-        return r, rs, p
+        r, pr = scipy.stats.pearsonr(X, Y)
+        rs, ps = scipy.stats.spearmanr(X, Y)
+        rnd = 4
+        rs, r = round(rs, rnd), round(r, rnd)
+        ps, pr = round(ps, rnd), round(pr, rnd)
+        return r, rs, ps, pr
 
 
     @staticmethod
-    def plot_2d(X, Y, xlabel="X", ylabel="Y"):
+    def plot_2d(X, Y, xlabel="X", ylabel="Y", show=True, should_draw=True):
         title = xlabel + " vs " + ylabel
-        fig = plt.figure()
-        ax = fig.add_subplot(211)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_title(title)
+        if should_draw:
+            fig = plt.figure()
+            ax = fig.add_subplot(211)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.set_title(title)
         X, Y = tuple(np.array(i) for i in [X, Y])
-
-        print("X", X)
-        print("Y", Y)
-        ax.scatter(X, Y)
-        b, m = polyfit(X,Y,1)
-        print("(Slope,Intercept)", (m, b))
-
-        Y = b + m * X
-
-        print("Best Fit", X, Y)
-
-        ax.plot(X, Y)
-
-        r, rs, p = Experiment.get_correlation_data(X, Y)
-
-        txt = " rs = " + str(rs) + ",  p = " + str(p) + ",  r = " + str(r)
-        fig.text(0.01, 0.99, txt, ha='left', va='top',fontsize="large")
-
-
-
-
-
-
-
-
-
-        plt.show()
-        return fig
+        Xn, Yn = X.copy(), Y.copy()
+        r, rs, ps, pr = Experiment.get_correlation_data(Xn, Yn)
+        if should_draw:
+            ax.scatter(X, Y)
+            b, m = polyfit(X,Y,1)
+            Y = b + m * X
+            ax.plot(X, Y)
+            txt = "$r_s$ = " + str(rs) + " (p=" + str(ps) + ")" + ", r = " + str(r) + " (p=" + str(pr) + ")"
+            fig.text(0.01, 0.99, txt, ha='left', va='top',fontsize="large")
+            if show:
+                plt.show()
+        return r, rs, ps, pr
 
     @staticmethod
-    def plot_bar_chart(X, Y, xlabel="X", ylabel="Y"):
+    def plot_bar_chart(X, Y, xlabel="X", ylabel="Y",show=True, should_draw=True):
         title = xlabel + " vs " + ylabel
-        fig = plt.figure()
-        ax = fig.add_subplot(211)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_title(title)
-        ax.bar(X, Y)
+        if should_draw:
+            fig = plt.figure()
+            ax = fig.add_subplot(211)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.set_title(title)
+            ax.bar(X, Y)
+        if should_draw and show:
+            plt.show()
         return fig
 
     @staticmethod
@@ -557,8 +482,9 @@ class Experiment:
         with open(directory + "/" + xl + '.json', 'w') as fp:
             json.dump(data, fp)
 
+
     @staticmethod
-    def load_json(data):
+    def load_json(data,show=True, csv_string="", should_draw=True):
 
         d1 = data['3D'] if '3D' in data else []
         d2 = data['2D'] if '2D' in data else []
@@ -577,50 +503,92 @@ class Experiment:
         for d in d1:
             x, y, z = d['data']
             xl, yl, zl = d['labels']
-            Experiment.plot_3d(x, y, z, xl, yl, zl)
+            Experiment.plot_3d(x, y, z, xl, yl, zl,False, True, True, False,should_draw)
 
         for d in d2:
             x, y = d['data']
             xl, yl = d['labels']
-            Experiment.plot_2d(x, y, xl, yl)
+            r, rs, ps, pr = Experiment.plot_2d(x, y, xl, yl,False,should_draw)
+            line = Experiment.construct_line(xl,yl, r, pr, rs, ps)
+            csv_string += line
 
         for d in d3:
             x, y = d['data']
             xl, yl = d['labels']
-            Experiment.plot_bar_chart(x,y, xl, yl)
+            Experiment.plot_bar_chart(x,y, xl, yl,False, should_draw)
 
         for d in d4:
             x, y, z = d['data']
             xl, yl, zl = d['labels']
-            Experiment.plot_3dB(x, y, z, xl, yl, zl)
+            x_to_correlation = Experiment.plot_3d(x, y, z, xl, yl, zl,True, True, True, False,should_draw)
+            for x in x_to_correlation:
+                r, rs, ps, pr = x_to_correlation[x]
+                line = Experiment.construct_line(yl, x, r, pr, rs, ps)
+                csv_string += line
+
+        if show:
+            plt.show()
+        return csv_string
+
+
 
     @staticmethod
-    def load_graph(path_to_json, show=True):
+    def construct_line(variable1, variable2, r, pr, rs, ps):
+        line = variable1 + "," + variable2 + "," + str(rs) + "," + str(ps) + "," + str(r) + "," + str(pr)
+        line += "\n"
+        return line
+
+
+    @staticmethod
+    def load_graph(path_to_json, show=True, csv_string="", should_draw=True):
+        data = Experiment.get_json(path_to_json)
+        if data is not None:
+            csv_string += Experiment.load_json(data, False, csv_string, should_draw)
+        if show:
+            plt.show()
+        return csv_string
+
+    @staticmethod
+    def get_json(path_to_json):
         if ".json" in path_to_json:
             with open(path_to_json, 'r') as fp:
                 data = json.load(fp)
-                Experiment.load_json(data)
-        if show:
-            plt.show()
+                return data
+        return None
 
     @staticmethod
-    def load_graphs(directory, show=True):
+    def load_graphs(directory, show=True, csv_string="", should_draw=True):
         entries = os.listdir(directory+"/")
         for entry in entries:
             e = directory+"/" + str(entry)
-            Experiment.load_graph(e, False)
+            csv_string += Experiment.load_graph(e, False, should_draw=should_draw)
         if show:
             plt.show()
+        return csv_string
 
     @staticmethod
-    def show_experiment_results(agent_variable_directory, interaction_directory, agent_variables_to_display, should_display_interaction_graphs):
+    def update_file(file_path, information):
+        if not os.path.exists(file_path):
+            with open(file_path, 'w'): pass
+        f = open(file_path, "a")
+        f.write(information)
+        f.close()
+
+
+
+    @staticmethod
+    def show_experiment_results(agent_variable_directory, interaction_directory, agent_variables_to_display, should_display_interaction_graphs, file_path, show=True):
+        csv = "Variable1,Variable2,rs,ps,r,pr\n"
         for var in agent_variables_to_display:
             direc = agent_variable_directory + "/" + Experiment.variable_to_name[var]
             print(direc)
-            Experiment.load_graphs(direc, False)
+            csv += Experiment.load_graphs(direc, False, should_draw=show)
+        Experiment.update_file(file_path,csv)
         if should_display_interaction_graphs:
-            Experiment.load_graphs(interaction_directory,False)
-        plt.show()
+            Experiment.load_graphs(interaction_directory,False, should_draw=show)
+
+        if show:
+            plt.show()
 
 
 
