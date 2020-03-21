@@ -18,9 +18,9 @@ class Competency:
         return (a + m)/2
 
     def percentage_difference(self, competency):
-        cpr = self.percentage()
-        crp = competency.percentage()
-        return (1/2) * (1 + cpr - crp)
+        a = self.appraisal_skill - competency.appraisal_skill
+        m = self.mining_skill - competency.mining_skill
+        return a,m
 
     def increase_mining_skills(self, amount):
         self.mining_skill += amount
@@ -328,12 +328,23 @@ class Agent:
     def stealing_from_aversion(self, agent):
         friend = self.friend(agent)
         av = self.stealing_aversion()
-        if friend >= 0.5:
-            return math.pow(av, (7/13) - av * (friend - 0.5))
-        return math.pow(av, 1 - av * (friend - 0.5))
+        p = math.pow(av, 1 - 4 * av * (friend - 0.5))
+        p = 1 if p > 1 else p
+        return p
 
     def help_probability(self, agent):
-        return 0.5 * self.stealing_from_aversion(agent)
+        hw = agent.wealth
+        mw = self.wealth
+        if mw < 1 or hw < 1:
+            bd = max(1 - hw, 1 - mw)
+            hw += bd
+            mw += bd
+        t = mw / hw
+        willingness = self.stealing_from_aversion(agent)
+        a = 0.265 + (1-0.265)*(t - 0.90)/(2.5-0.90)
+        a = min(3, max(0, a))
+        z = min(a*willingness, 1)
+        return z
 
     def risk_aversion(self):
         r = 1 - self.personality_template.facet_percentage(['O2','O4'],self.personality)
@@ -372,39 +383,60 @@ class Agent:
     def interact_probability(self):
         o = self.personality_template.dimension_percentage(self.personality, "O")
         e = self.personality_template.dimension_percentage(self.personality, "X")
-        return (o + 5*e) / 6
+        return (o + 3*e) / 4
 
     def teachable(self, personality):
         fsm = self.personality_template.max_facet_score
-        o2, o3 = personality['O2'], personality['O3']
+        o2, o3, h4 = personality['O2'], personality['O3'], personality['H4']
         e1, e2, e3 = personality['E1'], personality['E2'], personality['E3']
         c = self.personality_template.dimension_percentage(personality,'C')
-        o = (o2 + o3)/(2*fsm)
+        o = (o2 + o3 + h4)/(3*fsm)
         e = (e1 + e2 + e3) / (3 * fsm)
-        return (1/6) * (2 + o + 3*c - 2*e)
+
+        return (1/4) * (1.5 + o + 1.5*c - 1.5*e)
+
+    def good_teacher(self, personality):
+        good_teacher = self.personality_template.facet_percentage(["A3", "A4", "H2", "H1"], personality)
+        return good_teacher
+
+    def good_mentor(self, mentor):
+        # teachable, A3, A4, H2, H1
+        self.access_agent_information_lock.acquire()
+        personality = self.agent_information[mentor]["Personality"]
+        self.access_agent_information_lock.release()
+        good_teacher = self.good_teacher(personality)
+        teachable = self.teachable(personality)
+        return (1.5 * teachable + good_teacher) / 2.5
 
     def need_mentor(self, mentor, mentoring_cost):
         self.access_agent_information_lock.acquire()
         competency = self.agent_information[mentor]["Competency"]
         self.access_agent_information_lock.release()
-        cd = competency.percentage_difference(self.competency)
-        if mentoring_cost is not None and mentoring_cost <= self.wealth:
-            cost = cost = mentoring_cost/self.wealth
+        a, m = competency.percentage_difference(self.competency)
+        cd = ((a + m) + 2)/4
+        if mentoring_cost is not None and self.wealth > 0 and mentoring_cost <= self.wealth:
+            cost = min(2.5*mentoring_cost/self.wealth, 1)
         else:
             cost = 1
-        return cd*(1-cost)
+        nm = cd*(1-cost)
+        return nm
 
     def accept_mentor_probability(self, mentor, mentoring_cost):
         teachable = self.teachable(self.personality)
-        p = (1/5) * (2*(teachable + self.need_mentor(mentor,mentoring_cost)) + self.friend(mentor))
-        return p
+        good_mentor = self.good_mentor(mentor)
+        p = 1/6 * (2.5*teachable + 2.5*good_mentor + self.friend(mentor))
+        n = self.need_mentor(mentor,mentoring_cost)
+        r = 2*n * p
+        r = 1 if r > 1 else r
+        return r
 
     def accept_mentee_probability(self, mentee):
         self.access_agent_information_lock.acquire()
         personality = self.agent_information[mentee]["Personality"]
         self.access_agent_information_lock.release()
         teachable = self.teachable(personality)
-        p = (1/3) * (teachable + self.friend(mentee))
+        good_mentor = self.good_teacher(self.personality)
+        p = (1/4) * (2*teachable + good_mentor + self.friend(mentee))
         return p
 
     def accept_friend_probability(self, friend):
@@ -440,7 +472,7 @@ class Agent:
         elif isinstance(interaction,Mentorship):
             e = self.environment.estimated_earnings(self)
             accept = self.accept_mentor_probability(other,e) if self == interaction.reactive_agent else self.accept_mentee_probability(other)
-            x = "Accept probability: " + str(accept)
+            x = "Accept mentor: " + str(accept)
             #print(x)
             return random_boolean_variable(accept)
 

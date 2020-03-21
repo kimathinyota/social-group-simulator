@@ -82,6 +82,35 @@ class PersonalityTemplate:
 
 class HexacoPersonality(PersonalityTemplate):
 
+    @staticmethod
+    def psychopath():
+        return {
+            "H1": 10,
+            "H2": 10,
+            "H3": 10,
+            "H4": 10,
+            "E1": 10,
+            "E2": 10,
+            "E3": 10,
+            "E4": 10,
+            "X1": 50,
+            "X2": 50,
+            "X3": 50,
+            "X4": 50,
+            "A1": 10,
+            "A2": 10,
+            "A3": 10,
+            "A4": 10,
+            "C1": 90,
+            "C2": 90,
+            "C3": 90,
+            "C4": 90,
+            "O1": 50,
+            "O2": 50,
+            "O3": 50,
+            "O4": 90,
+        }
+
     def text(self, personality):
         text = ""
         for j in range(len(self.dimensions)):

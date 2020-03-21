@@ -38,7 +38,7 @@ class ResourceMiningEnvironment:
     def helping_amount(self, help):
         self.access_earnings_last_lock.acquire()
         earnt = self.agent_earnings_last_round[help] if help in self.agent_earnings_last_round else 0
-        earnt *= 0.05
+        earnt *= 0.15
         self.access_earnings_last_lock.release()
         return int(max(0.25*self.minimum_mine, earnt))
 
@@ -169,7 +169,7 @@ class ResourceMiningEnvironment:
         self.prison_lock.release()
 
     def set_time_for_interaction_session(self):
-        self.time_per_interaction_session = (self.max_number_of_interactions_for_each_agent() / (7*2*2))/50
+        self.time_per_interaction_session = (self.max_number_of_interactions_for_each_agent() / (7*2*2))/40
 
     def add_agent(self, agent):
         self.to_be_added_agents.append(agent)
@@ -270,6 +270,9 @@ class ResourceMiningEnvironment:
         for w in weights:
             sum += w
 
+        if sum == 0:
+            return [], [], 0
+
         for i in range(len(weights)):
             weights[i] /= sum
 
@@ -337,7 +340,9 @@ class ResourceMiningEnvironment:
         a = helper.similarity(interaction.proactive_agent.competency.appraisal_skill,interaction.reactive_agent.competency.appraisal_skill)
         m = helper.similarity(interaction.proactive_agent.competency.mining_skill,interaction.reactive_agent.competency.mining_skill)
 
-        self.analysis.add_interaction(interaction,(p,m,a),self.current_round)
+        if interaction.is_success:
+            self.analysis.add_interaction(interaction, (p, m, a), self.current_round)
+
         self.access_agent_to_all_interactions_lock.acquire()
 
         if interaction.is_success:
@@ -476,7 +481,8 @@ class ResourceMiningEnvironment:
             m2 = min(m*improve_m,1)
             a2 = min(a*improve_a,1)
 
-            self.analysis.add_competency_earnings(agent,m2-m,a2-a,self.current_round)
+            if not(m==1 and a==1):
+                self.analysis.add_competency_earnings(agent,m2-m,a2-a,self.current_round)
 
             agent.competency.update(m2,a2)
 
@@ -560,13 +566,11 @@ class ResourceMiningEnvironment:
         #             for interaction in interactions:
         #                 Interaction.reset(interaction)
 
-
     def notify_requested_interaction(self, interaction):
         self.lock_requested_interactions.acquire()
         if interaction not in self.all_requested_interactions:
             self.all_requested_interactions.append(interaction)
         self.lock_requested_interactions.release()
-
 
     def get_agent_earnings_list(self):
 
@@ -644,15 +648,17 @@ class ResourceMiningEnvironment:
                 if (self.current_round + 1) > self.number_of_rounds:
                     self.stop_running()
                     print("Elapsed", (time.time() - start))
-                    return self.display_requests, self.analysis
+                    hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(),
+                                            key=operator.itemgetter(1)))
+                    return self.display_requests, self.analysis, hierarchy
 
                 self.get_environment_ready_for_interactions()
                 self.stop_mining()
 
         self.stop_running()
         print("Elapsed", (time.time() - start))
-
-        return self.display_requests, self.analysis
+        hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(), key=operator.itemgetter(1)))
+        return self.display_requests, self.analysis, hierarchy
 
 
 class Interaction:

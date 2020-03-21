@@ -7,6 +7,7 @@ from numpy.polynomial.polynomial import polyfit
 import numpy as np
 import scipy.stats
 import json
+import csv
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.cm as cm
 
@@ -47,11 +48,12 @@ class RunningSimulation:
     def simulate(agents, should_display, number_of_rounds=40, should_upload=True, should_test=False,
                  starting_wealth=10000, minimum_mining_amount=10):
         environment = ResourceMiningEnvironment(starting_wealth,minimum_mining_amount,number_of_rounds,should_test)
-        gui_requests, analysis = RunningSimulation.run_environment(environment,agents)
+        gui_requests, analysis, hierarchy = RunningSimulation.run_environment(environment,agents)
         if should_upload:
             RunningSimulation.upload_to_database(analysis)
         if should_display:
             RunningSimulation.display_gui(gui_requests)
+        return gui_requests, hierarchy
 
 
 class Experiment:
@@ -152,6 +154,8 @@ class Experiment:
             Y, Z, = x_to_y_z[x][0], x_to_y_z[x][1]
             p, color = x_to_position[x], x_to_colour[x]
             X = [p for i in range(len(Y))]
+
+            should_include_lob = len(Y) >= 2 and len(Z) >= 2 and should_include_lob
 
             if should_draw:
                 if should_include_lob:
@@ -463,6 +467,7 @@ class Experiment:
         Experiment.run_interaction_vs_earn(total_number_of_agents, interaction_experiment_directory, start, end, repeats)
 
 
+
     @staticmethod
     def plot(agent_var, directory):
         n = "testAgent"
@@ -481,7 +486,6 @@ class Experiment:
         }
         with open(directory + "/" + xl + '.json', 'w') as fp:
             json.dump(data, fp)
-
 
     @staticmethod
     def load_json(data,show=True, csv_string="", should_draw=True):
@@ -574,6 +578,9 @@ class Experiment:
         f.write(information)
         f.close()
 
+    @staticmethod
+    def display():
+        plt.show()
 
 
     @staticmethod
@@ -589,6 +596,83 @@ class Experiment:
 
         if show:
             plt.show()
+
+    @staticmethod
+    def get_expected_values(expected_csv_file_location):
+        data = {}
+        with open(expected_csv_file_location) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            line_count = 0
+            for row in csv_reader:
+                if line_count > 0:
+                    var1, var2, expected = row
+                    data[(var1, var2)] = expected
+                line_count += 1
+            print(f'Processed {line_count} lines.')
+        return data
+
+    @staticmethod
+    def get_actual_values(actual_csv_file_location):
+        data = {}
+        with open(actual_csv_file_location) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            line_count = 0
+            for row in csv_reader:
+                if line_count > 0:
+                    var1, var2, rs, ps, r, p = row
+                    data[(var1, var2)] = (rs, ps, r, p)
+                line_count += 1
+            print(f'Processed {line_count} lines.')
+        return data
+
+    @staticmethod
+    def tofloat(x):
+        f = float(x)
+        f = 0 if math.isnan(f) else f
+        return f
+
+
+    @staticmethod
+    def check_values(expected_csv_file_location, actual_csv_file_location, save_location, alpha=0.09, start_positive=0.2, start_negative=-0.2):
+        expected_data = Experiment.get_expected_values(expected_csv_file_location)
+        actual_data = Experiment.get_actual_values(actual_csv_file_location)
+
+        Experiment.update_file(save_location, "Independent Variable, Dependent Variable, Spearman (rs), p, Pearson(r), "
+                                              "p, Expected? \n")
+
+        for variables in actual_data:
+            var1, var2 = variables
+            rsl, psl, rl, pl = actual_data[variables]
+            expected = expected_data[variables] if variables in expected_data else '?'
+            line = var1 + "," + var2 + "," + rsl + "," + psl + "," + rl + "," + pl + ","
+            if expected != '?':
+                rs, ps, r, p = Experiment.tofloat(rsl), Experiment.tofloat(psl), Experiment.tofloat(rl), Experiment.tofloat(pl)
+                is_statistically_significant = ps <= alpha or p <= alpha
+                extra = "SI" if not is_statistically_significant else ""
+
+                matches = (expected == '1' and (rs >= start_positive or r >= start_positive)) \
+                          or (expected == '-1' and (rs <= start_negative or r <= start_negative))
+
+                result = "Y" if matches else "N"
+                result += extra
+                line += result
+            line += "\n"
+            Experiment.update_file(save_location, line)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

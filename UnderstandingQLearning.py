@@ -33,6 +33,8 @@ alpha = 0.9 # Learning rate
 
 
 
+
+
 # get_optimal_route() will
 # take 2 arguments: starting location and end location in the warehouse
 # return optimal route for reaching the end location from the starting location
