@@ -8,7 +8,7 @@ from src.Helper import *
 from src.DisplayServer import *
 from src.Testing import *
 from src.Analysis import *
-
+import uuid
 
 # TODO: appraised competency and personality
 
@@ -418,6 +418,8 @@ class ResourceMiningEnvironment:
         self.in_mining_mode = False
         self.in_interaction_mode = False
         self.in_before_interaction_mode = True
+        for agent in self.active_agents:
+            agent.stop_mining()
 
     def elapsed_time(self):
         return time.time() - self.interaction_timer
@@ -679,6 +681,7 @@ class Interaction:
     def __init__(self, proactive_agent, reactive_agent, single_role, request_bidirectional, requires_acceptance, should_always_notify_all, environment):
         if proactive_agent is None or reactive_agent is None:
             raise ValueError("Interaction given null agent value")
+        self.id = uuid.uuid1()
         self.proactive_agent = proactive_agent
         self.reactive_agent = reactive_agent
         self.environment = environment
@@ -814,7 +817,7 @@ class Interaction:
                 self.accept()
 
     # NEED TO DO COPY
-    def copy(self):
+    def copy(self, is_deep=False):
         pass
 
     def accept(self):
@@ -867,7 +870,9 @@ class Friendship(Interaction):
         super(Friendship, self).__init__(proactive_agent, reactive_agent, True, True, True, True, environment)
 
     def exchange(self):
-        friend_token = FriendshipToken(friend1=self.proactive_agent, friend2=self.reactive_agent,should_notify_all=False,should_display=False,should_notify_environment=True)
+        friend_token = FriendshipToken(friend1=self.proactive_agent, friend2=self.reactive_agent,
+                                       interaction_id=self.id, should_notify_all=False, should_display=False,
+                                       should_notify_environment=True)
         exchange = Exchange(self.proactive_agent, self.reactive_agent, friend_token, friend_token)
         ResourceMiningEnvironment.process_later(self.environment,self,exchange)
 
@@ -876,15 +881,19 @@ class Friendship(Interaction):
         return True
 
     @classmethod
-    def from_interaction(cls, friendship):
-        a = cls(friendship.proactive_agent, friendship.reactive_agent, friendship.environment)
+    def from_interaction(cls, friendship, is_deep=False):
+        proactive, reactive = friendship.proactive_agent, friendship.reactive_agent
+        if is_deep:
+            proactive, reactive = proactive.copy(), reactive.copy()
+        a = cls(proactive, reactive, friendship.environment)
         a.is_accepted_or_rejected = friendship.is_accepted_or_rejected
         a.is_success = friendship.is_success
         a.requested_agent = friendship.requested_agent
+        a.id = friendship.id
         return a
 
-    def copy(self):
-        copy = Friendship.from_interaction(self)
+    def copy(self, is_deep=False):
+        copy = Friendship.from_interaction(self, is_deep)
         return copy
 
 
@@ -896,21 +905,27 @@ class Mentorship(Interaction):
         super(Mentorship, self).__init__(proactive_agent,reactive_agent,False,True,True, True, environment)
 
     def exchange(self):
-        mentor_token = MentorshipToken(mentor=self.proactive_agent, mentee=self.reactive_agent,percentage=self.environment.get_competency_increase_percentage(), should_notify_all=False,should_display=False,should_notify_environment=True)
+        mentor_token = MentorshipToken(mentor=self.proactive_agent, mentee=self.reactive_agent, interaction_id=self.id,
+                                       percentage=self.environment.get_competency_increase_percentage(),
+                                       should_notify_all=False, should_display=False, should_notify_environment=True)
         mentor_token.add_competency(self.reactive_agent)
         exchange = Exchange(self.proactive_agent, self.reactive_agent, mentor_token, mentor_token)
         ResourceMiningEnvironment.process_later(self.environment,self,exchange)
 
     @classmethod
-    def from_interaction(cls, mentorship):
-        a = cls(mentorship.proactive_agent,mentorship.reactive_agent,mentorship.environment)
+    def from_interaction(cls, mentorship, is_deep=False):
+        proactive, reactive = mentorship.proactive_agent, mentorship.reactive_agent
+        if is_deep:
+            proactive, reactive = proactive.copy(), reactive.copy()
+        a = cls(proactive, reactive, mentorship.environment)
         a.is_accepted_or_rejected = mentorship.is_accepted_or_rejected
         a.is_success = mentorship.is_success
         a.requested_agent = mentorship.requested_agent
+        a.id = mentorship.id
         return a
 
-    def copy(self):
-        copy = Mentorship.from_interaction(self)
+    def copy(self, is_deep=False):
+        copy = Mentorship.from_interaction(self, is_deep)
         return copy
 
     def can_happen(self):
@@ -933,16 +948,20 @@ class Help(Interaction):
         self.determine_helping_funds()
 
     @classmethod
-    def from_interaction(cls, help):
-        a = cls(help.proactive_agent, help.reactive_agent, help.environment)
+    def from_interaction(cls, help, is_deep=False):
+        proactive, reactive = help.proactive_agent, help.reactive_agent
+        if is_deep:
+            proactive, reactive = proactive.copy(), reactive.copy()
+        a = cls(proactive, reactive, help.environment)
         a.is_accepted_or_rejected = help.is_accepted_or_rejected
         a.is_success = help.is_success
         a.requested_agent = help.requested_agent
         a.helping_funds = help.helping_funds
+        a.id = help.id
         return a
 
-    def copy(self):
-        copy = Help.from_interaction(self)
+    def copy(self, is_deep=False):
+        copy = Help.from_interaction(self, is_deep)
         return copy
 
     def __init__(self, proactive_agent, reactive_agent, environment):
@@ -953,7 +972,8 @@ class Help(Interaction):
         return self.helping_funds
 
     def exchange(self):
-        help_token = HelpToken(self.proactive_agent, self.reactive_agent, self.helping_funds, should_notify_all=True,should_display=True,should_notify_environment=True)
+        help_token = HelpToken(self.proactive_agent, self.reactive_agent, self.helping_funds, self.id,
+                               should_notify_all=True, should_display=True, should_notify_environment=True)
         exchange = Exchange(self.proactive_agent, self.reactive_agent,help_token, help_token)
         ResourceMiningEnvironment.process_now(self.environment,exchange)
 
@@ -980,17 +1000,21 @@ class Theft(Interaction):
         self.stolen_funds = self.environment.theft_amount(self.reactive_agent)
 
     @classmethod
-    def from_interaction(cls, theft):
-        a = cls(theft.proactive_agent, theft.reactive_agent, theft.environment)
+    def from_interaction(cls, theft, is_deep=False):
+        proactive, reactive = theft.proactive_agent, theft.reactive_agent
+        if is_deep:
+            proactive, reactive = proactive.copy(), reactive.copy()
+        a = cls(proactive, reactive, theft.environment)
         a.is_accepted_or_rejected = theft.is_accepted_or_rejected
         a.is_success = theft.is_success
         a.requested_agent = theft.requested_agent
         a.stolen_funds = theft.stolen_funds
         a.is_caught = theft.is_caught
+        a.id = theft.id
         return a
 
-    def copy(self):
-        copy = Theft.from_interaction(self)
+    def copy(self, is_deep=False):
+        copy = Theft.from_interaction(self, is_deep)
         return copy
 
     def __init__(self, proactive_agent, reactive_agent, environment):
@@ -1009,7 +1033,8 @@ class Theft(Interaction):
             self.notify_all()
 
     def exchange(self):
-        theft_token = TheftToken(self.proactive_agent, self.reactive_agent, self.stolen_funds, should_notify_all=True,should_display=True,should_notify_environment=True)
+        theft_token = TheftToken(self.proactive_agent, self.reactive_agent, self.stolen_funds, self.id,
+                                 should_notify_all=True, should_display=True, should_notify_environment=True)
         exchange = Exchange(self.proactive_agent, self.reactive_agent, theft_token, theft_token)
         ResourceMiningEnvironment.process_now(self.environment, exchange)
 
@@ -1064,14 +1089,15 @@ class FriendshipToken(Token):
 
         if amount > 0:
             agent.environment.analysis.add_interaction_money_earnings(agent,agent==self.friend1, amount, Friendship, agent.environment.current_round)
-            return ResourceToken.change(amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
+            return ResourceToken.change(amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display, self.interaction_id)
 
         return True
 
-    def __init__(self, friend1, friend2, should_notify_all=True, should_notify_environment=True, should_display=True):
+    def __init__(self, friend1, friend2, interaction_id, should_notify_all=True, should_notify_environment=True, should_display=True):
         super(FriendshipToken, self).__init__(should_notify_all,should_notify_environment,should_display)
         self.friend1 = friend1
         self.friend2 = friend2
+        self.interaction_id = interaction_id
 
 
 class MentorshipToken(Token):
@@ -1092,7 +1118,7 @@ class MentorshipToken(Token):
             if self.amount > 0:
                 agent.environment.analysis.add_interaction_money_earnings(agent, True, self.amount,
                                                                           Mentorship, agent.environment.current_round)
-                return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
+                return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display, self.interaction_id)
 
     def get_mentee_earnings(self):
         if self.amount is None:
@@ -1109,17 +1135,18 @@ class MentorshipToken(Token):
         if self.amount > 0:
             agent.environment.analysis.add_interaction_money_earnings(agent, False, -self.amount,
                                                                       Mentorship, agent.environment.current_round)
-            return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
+            return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display, self.interaction_id)
 
         return True
 
-    def __init__(self, mentor, mentee, percentage, should_notify_all=True, should_notify_environment=True, should_display=True):
+    def __init__(self, mentor, mentee, interaction_id, percentage, should_notify_all=True, should_notify_environment=True, should_display=True):
         super(MentorshipToken, self).__init__(should_notify_all,should_notify_environment,should_display)
         # will return list of skills better than mentee and difference for each of those skills
         self.skill_list, mp, ap = mentor.competency.better_skills(mentee.competency)
         self.mentor = mentor
         self.mentee = mentee
         self.amount = None
+        self.interaction_id = interaction_id
         if mp and ap is None:
             self.p = 0
         else:
@@ -1139,20 +1166,21 @@ class TheftToken(Token):
             if self.amount > 0:
                 agent.environment.analysis.add_interaction_money_earnings(agent, True, self.amount,
                                                                           Theft, agent.environment.current_round)
-                return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
+                return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display, self.interaction_id)
 
     def remove_from(self, agent):
         if agent == self.victim:
             if self.amount > 0:
                 agent.environment.analysis.add_interaction_money_earnings(agent, False, -self.amount,
                                                                           Theft, agent.environment.current_round)
-                return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
+                return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display, self.interaction_id)
 
-    def __init__(self, thief, victim, amount, should_notify_all=True, should_notify_environment=True, should_display=True):
+    def __init__(self, thief, victim, amount, interaction_id, should_notify_all=True, should_notify_environment=True, should_display=True):
         super(TheftToken, self).__init__(should_notify_all=True, should_notify_environment=True, should_display=True)
         self.thief = thief
         self.victim = victim
         self.amount = amount
+        self.interaction_id = interaction_id
 
 
 class HelpToken(Token):
@@ -1166,20 +1194,21 @@ class HelpToken(Token):
             if self.amount > 0:
                 agent.environment.analysis.add_interaction_money_earnings(agent, False, self.amount,
                                                                           Help, agent.environment.current_round)
-                return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
+                return ResourceToken.change(self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display, self.interaction_id)
 
     def remove_from(self, agent):
         if agent == self.helper:
             if self.amount > 0:
                 agent.environment.analysis.add_interaction_money_earnings(agent, True, -self.amount,
                                                                           Help, agent.environment.current_round)
-                return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display)
+                return ResourceToken.change(-self.amount, agent, self.should_notify_all, self.should_notify_environment, self.shoud_display, self.interaction_id)
 
-    def __init__(self, helper, helped, amount, should_notify_all=True, should_notify_environment=True, should_display=True):
+    def __init__(self, helper, helped, amount, interaction_id, should_notify_all=True, should_notify_environment=True, should_display=True):
         super(HelpToken, self).__init__(should_notify_all=True, should_notify_environment=True, should_display=True)
         self.helped = helped
         self.helper = helper
         self.amount = amount
+        self.interaction_id = interaction_id
 
 
 class ResourceToken(Token):
@@ -1193,8 +1222,8 @@ class ResourceToken(Token):
         return ResourceToken.change(amount,agent)
 
     @staticmethod
-    def change(amount, agent, should_notify_all=True, should_notify_environment=True, should_display=True):
-        agent.increase_wealth(amount,should_notify_all=should_notify_all,should_notify_environment=should_notify_environment,should_display=should_display)
+    def change(amount, agent, should_notify_all=True, should_notify_environment=True, should_display=True, interaction_id=None):
+        agent.increase_wealth(amount,should_notify_all=should_notify_all,should_notify_environment=should_notify_environment,should_display=should_display, interaction_id=interaction_id)
         return True
 
     def __init__(self, amount, should_notify_all=True, should_notify_environment=True, should_display=True):

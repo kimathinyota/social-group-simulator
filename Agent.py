@@ -81,13 +81,18 @@ class Agent:
 
     # only copies name, competency and personality
     def copy(self):
-        return Agent(self.name,self.competency.copy(),self.personality.copy())
+        return Agent(self.name,self.competency.copy(),self.personality.copy(), self.generation_id)
 
     # Uses HEXACO personality model
-    def __init__(self, name, competency, personality):
+    def __init__(self, name, competency, personality, generation_id=None):
 
         self.name = name
         self.id = uuid.uuid1()
+
+        self.generation_id = generation_id
+        # maintained when agent is copied
+        if self.generation_id is None:
+            self.generation_id = uuid.uuid1()
 
         self.competency = competency
 
@@ -99,6 +104,9 @@ class Agent:
         # creates map from personality facets (e.g. 'X1' or 'C3') to score
         self.personality_template = HexacoPersonality()
         self.personality = personality
+
+        self.interact_earn_lock = threading.Lock()
+        self.interaction_to_earned = {}
 
         # assigned environment
         self.environment = None
@@ -164,7 +172,15 @@ class Agent:
         self.agent_information[agent]["Competency"] = new_competency
         self.access_agent_information_lock.release()
 
+    def add_interaction_earnings(self, interaction_id, earnings):
+        self.interact_earn_lock.acquire()
+        self.interaction_to_earned[interaction_id] = earnings
+        self.interact_earn_lock.release()
 
+    def remove_interaction_earnings(self, interaction_id):
+        self.interact_earn_lock.acquire()
+        self.interaction_to_earned.pop(interaction_id)
+        self.interact_earn_lock.release()
 
     def increment_no_rounds(self):
         self.access_agent_information_lock.acquire()
@@ -199,11 +215,13 @@ class Agent:
         self.access_agent_information_lock.release()
         return k
 
-    def increase_wealth(self, amount, should_notify_all=True, should_display=True, should_notify_environment=True):
+    def increase_wealth(self, amount, should_notify_all=True, should_display=True, should_notify_environment=True, interaction_id=None):
         self.access_wealth_lock.acquire()
         self.wealth += amount
         self.access_wealth_lock.release()
-        self.environment.notify_wealth_increase(amount,self, should_notify_all=should_notify_all, should_display=should_display, should_notify_environment=should_notify_environment)
+        self.environment.notify_wealth_increase(amount, self, should_notify_all=should_notify_all, should_display=should_display, should_notify_environment=should_notify_environment)
+        if interaction_id is not None:
+            self.add_interaction_earnings(interaction_id, amount)
 
     def number_of_times_stolen_from_me(self, agent):
         reactive_thefts = self.interactions[Theft][1].copy()
@@ -216,7 +234,6 @@ class Agent:
 
     def add_caught_theft_for_this_round(self, theft):
         self.caught_thefts_in_this_round.append(theft)
-
 
     def set_environment(self, environment):
         self.environment = environment
@@ -527,7 +544,7 @@ class Agent:
 
     def notify_interaction(self, interaction):
         if not interaction.is_success:
-            return None
+            return False
         # only successful interactions (both accept) are stored
         other_agents = interaction.other_agents(self)
         for agent in other_agents:
@@ -541,6 +558,7 @@ class Agent:
                 tup[1].append(interaction.copy())
             self.agent_information[agent] = info
             self.access_agent_information_lock.release()
+        return True
 
     def start_interacting(self, in_prison=False):
         self.caught_thefts_in_this_round = []
@@ -560,6 +578,9 @@ class Agent:
         # clear any risidual interactions - this only called when every agent has stopped interacting
         self.pending_interaction_requests.clear()
         self.is_mining = True
+
+    def stop_mining(self):
+        pass
 
     @staticmethod
     def random(name):
