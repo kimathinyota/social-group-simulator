@@ -169,7 +169,7 @@ class ResourceMiningEnvironment:
         self.prison_lock.release()
 
     def set_time_for_interaction_session(self):
-        self.time_per_interaction_session = (self.max_number_of_interactions_for_each_agent() / (7*2*2))/40
+        self.time_per_interaction_session = (self.max_number_of_interactions_for_each_agent() / (7*2*2))/25
 
     def add_agent(self, agent):
         self.to_be_added_agents.append(agent)
@@ -190,7 +190,7 @@ class ResourceMiningEnvironment:
         for a in self.active_agents:
             # send agent appraisal information to a
             personality, competency = self.get_appraised_personality_and_competency(a,agent)
-            a.add_new_agent(agent,agent.wealth,personality,competency)
+            a.add_new_agent(agent, agent.wealth, personality, competency)
 
             personality, competency = self.get_appraised_personality_and_competency(agent, a)
             agent.add_new_agent(a,a.wealth,personality,competency)
@@ -198,7 +198,7 @@ class ResourceMiningEnvironment:
             for type in self.interaction_types:
                 interactions_for_type = []
                 i = self.construct_interaction(agent,a,type)
-                if i is not None:
+                if i is not None and i.proactive_agent != i.reactive_agent:
                     interactions_for_type.append(i)
                     if not i.is_single_role:
                         i = self.construct_interaction(a, agent, type)
@@ -227,13 +227,10 @@ class ResourceMiningEnvironment:
         return earnings
 
     def get_agent_earnings_after_mining(self, agent):
-
         earnings = self.agent_earnings_after_mining[agent]
-
         return earnings
 
     def get_requestable_interactions(self, agent):
-
         if agent in self.prison:
             return None, None, None
 
@@ -643,7 +640,7 @@ class ResourceMiningEnvironment:
                 self.handle_mining()
 
                 x = "Simulated round " + str(self.current_round)
-                #print(x)
+                print(x)
 
                 self.run_test_on_test_variables()
 
@@ -654,8 +651,9 @@ class ResourceMiningEnvironment:
                                             key=operator.itemgetter(1)))
                     return self.display_requests, self.analysis, hierarchy
 
-                self.get_environment_ready_for_interactions()
                 self.stop_mining()
+                self.get_environment_ready_for_interactions()
+
 
         self.stop_running()
         print("Elapsed", (time.time() - start))
@@ -753,6 +751,10 @@ class Interaction:
         if not self.is_requestable_by(agent):
             return None
 
+        # if this agent has already requested it:
+        if self.requested_agent == agent:
+            return None
+
         self.access_request_lock.acquire()
         agent.acquire_interact_lock()
 
@@ -773,7 +775,7 @@ class Interaction:
             self.access_request_lock.release()
             return None
 
-        # If a request already exists then accept
+        # If other agent has requested it
         if not self.exceeded_interaction_limits() and self.requested_agent is not None and not self.is_accepted_or_rejected:
             self.is_success = True
             self.accept()

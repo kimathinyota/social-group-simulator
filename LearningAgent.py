@@ -1,11 +1,12 @@
 from src.Agent import *
+import functools
 
 
 class LearningAgent(Agent):
 
     # Q matrix:[competency state: 10][round state: 10][agent variables: 8][agent level: 5][interaction choice: 9]
 
-    def __init__(self, name, competency, personality, generation_id=None, is_training=True, long_term_round_count=4, q_array_sizes=[5, 10, 8, 5, 9]):
+    def __init__(self, name, competency, personality, generation_id=None, is_training=True, long_term_round_count=4, q_array_sizes=[10, 10, 8, 5, 9]):
         super(LearningAgent, self).__init__(name, competency, personality, generation_id)
         # q_array_sizes: [#competency state][#round states][#agent variables][#agent level][#interaction choice]
         self.q_array_sizes = q_array_sizes
@@ -13,6 +14,7 @@ class LearningAgent(Agent):
         self.Q = np.array(np.zeros(q_array_sizes))
         # this agent's earnings each round
         self.my_earnings_each_round = []
+        self.my_mining_earnings_each_round = []
         self.is_training = is_training
         self.long_term_round_count = long_term_round_count
         self.q_lock = threading.Lock()
@@ -33,17 +35,27 @@ class LearningAgent(Agent):
         # start = round where interaction took place
         # finish = round where impact of interaction is said to have ended
         # reward = money_earnt(interaction) + SUM_(start->finish){discount^(round-start)*money_earnt(round)}
-        iearn = self.interaction_to_earned[interaction.id]/self.my_earnings_each_round[start]
+        interaction_to_earned = self.interaction_to_earned[start]
+        # calculate total absolute earned in start
+        # using this method instead of my_earnings_each_round: concerned with absolute ratios ...
+        # ... so -7, -2, 1: (-7/10, -2/10, 1/10) not (7/8, 2/8, -1/8)
+        # important if sum is 0: -6, 4, 2: (-6/12, 4,12, 2, 12)
+        total = functools.reduce(lambda x, y: abs(x)+y, interaction_to_earned.values()) if len(interaction_to_earned) > 0 else 0
+        total += self.my_mining_earnings_each_round[start]
+        iid = str(interaction.id)
+        # iearn = amount earned by interaction
+        iearn = interaction_to_earned[iid] if iid in interaction_to_earned else 0
+        iearn /= (total if total > 0 else 1)
+
         # end <= len(my_earnings_each_round)
         end = min(start + finish+1, len(self.my_earnings_each_round))
         earnings = self.my_earnings_each_round[start:end]
-        sum = 0
-        for e in earnings:
-            sum += e
+        sum = functools.reduce(lambda x, y: abs(x) + y, earnings)
+
         total = 0
         for i in range(len(earnings)):
             e = earnings[i] / sum
-            total += e * self.discount ^ i
+            total += e * math.pow(self.discount, i)
         score = iearn + total
         return score
 
@@ -68,19 +80,22 @@ class LearningAgent(Agent):
         m, a = competency.mining_skill, competency.appraisal_skill
         pm, pa = self.position(m, levels), self.position(a, levels)
         pa += levels
-        return pm, pa
+        return int(pm), int(pa)
 
-    # added functionality: will construct q-entry for interaction and store it in delayed_q_entries for later processing
-    def notify_interaction(self, interaction):
-        is_success = super(LearningAgent, self).notify_interaction()
-        # deep copy used: we want a snapshot of the interaction at the time (all data preserved)
-        icopy = interaction.copy(is_deep=True)
-        start = self.current_round
-        self.q_lock.acquire()
-        # entry format (Interaction, start, finish)
-        entry = (icopy, start, start + self.long_term_round_count)
-        self.delayed_q_entries.append(entry)
-        self.q_lock.release()
+    def interaction_happened(self, interaction):
+        super(LearningAgent, self).interaction_happened(interaction)
+        # x = "Hap: " + str(interaction) + " " + str(interaction.id)
+        # print(x)
+        if not (interaction.requested_agent != self and not interaction.requires_acceptance):
+            # in this situation, this agent has no control and so nothing can be learnt from it
+            # deep copy used: we want a snapshot of the interaction at the time (all data preserved)
+            icopy = interaction.copy(is_deep=True)
+            start = self.current_round - 1
+            self.q_lock.acquire()
+            # entry format (Interaction, start, finish)
+            entry = (icopy, start, start + self.long_term_round_count)
+            self.delayed_q_entries.append(entry)
+            self.q_lock.release()
 
     @staticmethod
     def get_action_position(interaction_type, is_success, is_proactive):
@@ -103,7 +118,13 @@ class LearningAgent(Agent):
 
     def learn_from_interaction(self, interaction, start, finish):
         # Format: Type IsProactive IsPick Probability Agent
-        probabilities = self.action_probabilities[start][interaction.id]
+
+        # print("Learn", interaction, start, finish)
+        # print("Keys", list(self.action_probabilities[start].keys()))
+        # print("Bro", self.action_probabilities)
+
+
+        probabilities = self.action_probabilities[start][str(interaction.id)]
 
         is_proactive = interaction.proactive_agent.generation_id = self.generation_id
         action = self.get_action_position(type(interaction), interaction.is_success, is_proactive)
@@ -145,6 +166,7 @@ class LearningAgent(Agent):
         if positions is None:
             return None
         comp_state, round_pos, var_pos, var_level, action = positions
+        # [5, 10, 8, 5, 9]
         return self.Q[comp_state][round_pos][var_pos][var_level][action]
 
     def start_interacting(self, in_prison=False):
@@ -154,13 +176,14 @@ class LearningAgent(Agent):
     def learn(self):
         for i in range(len(self.delayed_q_entries)):
             interaction, start, finish = self.delayed_q_entries[i]
-            if self.current_round < finish and self.current_round < self.environment.number_of_rounds:
+            if (self.current_round-1) < finish and (self.current_round-1) < self.environment.number_of_rounds:
                 # hasn't reached that point yet - delayed_q_entries is in chronological order
                 return None
             self.learn_from_interaction(interaction, start, finish)
 
     def stop_mining(self):
         self.my_earnings_each_round.append(self.environment.get_agent_earnings_this_round(self))
+        self.my_mining_earnings_each_round.append(self.environment.get_agent_earnings_after_mining(self))
         self.learn()
 
     def accept_interaction(self, interaction):
@@ -187,21 +210,26 @@ class LearningAgent(Agent):
         if isinstance(interaction, Friendship):
             accept = self.accept_friend_probability(other)
             pick = accept * interact_prob
-            self.action_probabilities[self.current_round][interaction.id] = [(Friendship, True, True, pick,
-                                                                              other.copy()),
-                                                                             (Friendship, True, False, (1-pick),
-                                                                              other.copy())]
+            # print(self.action_probabilities, self.current_round-1)
+            # x = "Accept: " + str(interaction) + " " + str(interaction.id)
+            # print(x)
+            self.action_probabilities[self.current_round-1][str(interaction.id)] = [(Friendship, True, True, pick,
+                                                                                     other.copy()),
+                                                                                    (Friendship, True, False, (1-pick),
+                                                                                     other.copy())]
             return random_boolean_variable(accept)
         elif isinstance(interaction, Mentorship):
+            # x = "Accept: " + str(interaction) + " " + str(interaction.id)
+            # print(x)
             e = self.environment.estimated_earnings(self)
             is_reactive = self == interaction.reactive_agent
             accept = self.accept_mentor_probability(other, e) if is_reactive else self.accept_mentee_probability(other)
             is_p = not is_reactive
             pick = accept * interact_prob
-            self.action_probabilities[self.current_round][interaction.id] = [(Mentorship, is_p, True, pick,
-                                                                              other.copy()),
-                                                                             (Mentorship, is_p, False, (1-pick),
-                                                                              other.copy())]
+            self.action_probabilities[self.current_round-1][str(interaction.id)] = [(Mentorship, is_p, True, pick,
+                                                                                     other.copy()),
+                                                                                    (Mentorship, is_p, False, (1-pick),
+                                                                                     other.copy())]
             return random_boolean_variable(accept)
 
     def run(self):
@@ -220,13 +248,19 @@ class LearningAgent(Agent):
 
                     if interactions is not None:
                         if len(interactions) > 0:
+                            x = "Interactions: " + str(interactions)
+                            #print(x)
+
                             choice = random.choices(population=interactions, weights=weights, k=1)[0]
+                            # x = "Choice: " + str(choice) + " " + str(choice.id)
+                            # print(x)
                             choice.request(self)
-                            if choice.id not in self.action_probabilities[self.current_round]:
+                            if str(choice.id) not in self.action_probabilities[self.current_round-1]:
                                 probs = [(type(interactions[i]), interactions[i].proactive_agent == self, True,
                                           weights[i], interactions[i].other_agent(self).copy())
                                          for i in range(len(interactions))]
-                                self.action_probabilities[self.current_round][choice.id] = probs
+                                self.action_probabilities[self.current_round-1][str(choice.id)] = probs
+
 
                 # Agent will now respond to up to two received interactions
                 self.is_busy = True

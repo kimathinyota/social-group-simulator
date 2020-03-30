@@ -106,7 +106,7 @@ class Agent:
         self.personality = personality
 
         self.interact_earn_lock = threading.Lock()
-        self.interaction_to_earned = {}
+        self.interaction_to_earned = []
 
         # assigned environment
         self.environment = None
@@ -174,12 +174,11 @@ class Agent:
 
     def add_interaction_earnings(self, interaction_id, earnings):
         self.interact_earn_lock.acquire()
-        self.interaction_to_earned[interaction_id] = earnings
-        self.interact_earn_lock.release()
-
-    def remove_interaction_earnings(self, interaction_id):
-        self.interact_earn_lock.acquire()
-        self.interaction_to_earned.pop(interaction_id)
+        c = (self.current_round - 1)
+        if len(self.interaction_to_earned) <= c:
+            for i in range(len(self.interaction_to_earned), c+1):
+                self.interaction_to_earned.append({})
+        self.interaction_to_earned[c][str(interaction_id)] = earnings
         self.interact_earn_lock.release()
 
     def increment_no_rounds(self):
@@ -609,7 +608,6 @@ class Agent:
                             #x = str(self) + " Choice: " + str(choice) + " <-->  " + str( { interactions[i]: weights[i] for i in range(len(interactions))})
                             #print(x)
                             choice.request(self)
-
 
                 # Agent will now respond to up to two received interactions
                 self.is_busy = True

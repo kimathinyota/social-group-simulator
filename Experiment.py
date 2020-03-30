@@ -1,4 +1,5 @@
 from src.Agent import *
+from src.LearningAgent import *
 from src.DisplayServer import *
 from src.GoldMiningEnvironment import *
 import threading
