@@ -25,6 +25,19 @@ class PersonalityTemplate:
         for x in range(1, self.number_of_facets + 1):
             personality[dimension + str(x)] = value
 
+    def set_values(self, personality, key_value_list):
+        for kv in key_value_list:
+            facet_or_dimension_list, value = kv
+            for fd in facet_or_dimension_list:
+                if len(fd) == 1:
+                    #dimension
+                    self.set_all_facets_in_dimension(personality, fd, value)
+                elif len(fd) == 2:
+                    #facet
+                    personality[fd] = value
+
+        return personality
+
 
     def dimension_total(self, personality, dimension_letter):
         tot = 0
@@ -110,6 +123,37 @@ class HexacoPersonality(PersonalityTemplate):
             "O3": 50,
             "O4": 90,
         }
+
+    @staticmethod
+    def average():
+        return {
+            "H1": 50,
+            "H2": 50,
+            "H3": 50,
+            "H4": 50,
+            "E1": 50,
+            "E2": 50,
+            "E3": 50,
+            "E4": 50,
+            "X1": 50,
+            "X2": 50,
+            "X3": 50,
+            "X4": 50,
+            "A1": 50,
+            "A2": 50,
+            "A3": 50,
+            "A4": 50,
+            "C1": 50,
+            "C2": 50,
+            "C3": 50,
+            "C4": 50,
+            "O1": 50,
+            "O2": 50,
+            "O3": 50,
+            "O4": 50,
+        }
+
+
 
     def text(self, personality):
         text = ""

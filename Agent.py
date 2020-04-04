@@ -59,7 +59,7 @@ class Competency:
         return skills, m, a
 
     def copy(self):
-        return Competency(self.mining_skill,self.appraisal_skill)
+        return Competency(self.mining_skill, self.appraisal_skill)
 
     @staticmethod
     def random():
@@ -79,6 +79,8 @@ class Competency:
 
 class Agent:
 
+    type = "Static"
+
     # only copies name, competency and personality
     def copy(self):
         return Agent(self.name,self.competency.copy(),self.personality.copy(), self.generation_id)
@@ -95,6 +97,7 @@ class Agent:
             self.generation_id = uuid.uuid1()
 
         self.competency = competency
+        self.starting_competency = competency.copy()
 
         self.number_of_interactions = 0
 

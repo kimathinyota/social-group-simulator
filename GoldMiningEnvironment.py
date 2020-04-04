@@ -8,6 +8,7 @@ from src.Helper import *
 from src.DisplayServer import *
 from src.Testing import *
 from src.Analysis import *
+
 import uuid
 
 # TODO: appraised competency and personality
@@ -514,6 +515,7 @@ class ResourceMiningEnvironment:
             for exchange in exchanges:
                 self.process_now(exchange)
 
+
         self.display(4, [[agent.copy() for agent in self.active_agents]])
 
         agent_to_wealth = {}
@@ -614,6 +616,19 @@ class ResourceMiningEnvironment:
             runner = unittest.TextTestRunner()
             runner.run(suite)
 
+    def get_training_data(self):
+        data = {}
+        training = {}
+        # generational_id --> {Name, Type, Starting Competency, Personality}
+        for agent in self.active_agents:
+            competency = agent.starting_competency
+            data[str(agent.generation_id)] = (agent.name, (competency.mining_skill, competency.appraisal_skill),
+                                         agent.personality)
+            if agent.type == "Learning":
+                training[str(agent.generation_id)] = agent.Q.tolist()
+
+        return {"data": data, "training": training}
+
     def run(self):
         self.is_running = True
         start = time.time()
@@ -640,25 +655,27 @@ class ResourceMiningEnvironment:
                 self.handle_mining()
 
                 x = "Simulated round " + str(self.current_round)
-                print(x)
+                #print(x)
 
                 self.run_test_on_test_variables()
 
                 if (self.current_round + 1) > self.number_of_rounds:
                     self.stop_running()
-                    print("Elapsed", (time.time() - start))
+                    #print("Elapsed", (time.time() - start))
                     hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(),
                                             key=operator.itemgetter(1)))
-                    return self.display_requests, self.analysis, hierarchy
+                    training = self.get_training_data()
+                    return self.display_requests, self.analysis, hierarchy, training
 
                 self.stop_mining()
                 self.get_environment_ready_for_interactions()
 
 
         self.stop_running()
-        print("Elapsed", (time.time() - start))
+        #print("Elapsed", (time.time() - start))
         hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(), key=operator.itemgetter(1)))
-        return self.display_requests, self.analysis, hierarchy
+        training = self.get_training_data()
+        return self.display_requests, self.analysis, hierarchy, training
 
 
 class Interaction:
@@ -907,7 +924,7 @@ class Mentorship(Interaction):
         super(Mentorship, self).__init__(proactive_agent,reactive_agent,False,True,True, True, environment)
 
     def exchange(self):
-        mentor_token = MentorshipToken(mentor=self.proactive_agent, mentee=self.reactive_agent, interaction_id=self.id,
+        mentor_token = MentorshipToken(self.proactive_agent, self.reactive_agent, self.id,
                                        percentage=self.environment.get_competency_increase_percentage(),
                                        should_notify_all=False, should_display=False, should_notify_environment=True)
         mentor_token.add_competency(self.reactive_agent)
@@ -1040,7 +1057,6 @@ class Theft(Interaction):
         exchange = Exchange(self.proactive_agent, self.reactive_agent, theft_token, theft_token)
         ResourceMiningEnvironment.process_now(self.environment, exchange)
 
-
     def get_stolen_funds(self):
         return self.stolen_funds
 
@@ -1088,6 +1104,9 @@ class FriendshipToken(Token):
         amount = ResourceMiningEnvironment.get_agent_earnings_after_mining(friend.environment, friend)
         amount *= 0.1
         amount = int(amount)
+
+        # f = "Friendship Token " + str(amount) + " " + str(agent)
+        # print(f)
 
         if amount > 0:
             agent.environment.analysis.add_interaction_money_earnings(agent,agent==self.friend1, amount, Friendship, agent.environment.current_round)

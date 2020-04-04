@@ -45,16 +45,20 @@ class RunningSimulation:
     def upload_to_database(analysis):
         analysis.query_all()
 
+    # check = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training/training.json"
     @staticmethod
     def simulate(agents, should_display, number_of_rounds=40, should_upload=True, should_test=False,
-                 starting_wealth=10000, minimum_mining_amount=10):
+                 starting_wealth=10000, minimum_mining_amount=10,
+                 training_save_location="/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training/training.json"):
         environment = ResourceMiningEnvironment(starting_wealth,minimum_mining_amount,number_of_rounds,should_test)
-        gui_requests, analysis, hierarchy = RunningSimulation.run_environment(environment,agents)
+        gui_requests, analysis, hierarchy, training = RunningSimulation.run_environment(environment,agents)
         if should_upload:
             RunningSimulation.upload_to_database(analysis)
+
         if should_display:
             RunningSimulation.display_gui(gui_requests)
-        return gui_requests, hierarchy
+
+        return gui_requests, hierarchy, training
 
 
 class Experiment:
@@ -107,6 +111,7 @@ class Experiment:
             agent.competency.update(agent.competency.mining_skill, percentage)
 
         return agent
+
 
 
     @staticmethod
@@ -240,6 +245,175 @@ class Experiment:
         except FileExistsError:
             pass
 
+    # Training:
+    #   id -> Q
+    # Agents:
+    #   id -> {Name, Starting Competency, Personality}
+    # Config:
+    #   (discount, gamma, alpha, q_array_sizes, number_trained_per_game, long_term_reward),
+    #   (number_of_rounds, starting_wealth, minimum_mining_amount, number_of_agents),
+    #   Training-order
+    # Progress:
+    #   Run: {#N.O, Current Position,  Agents IDs involved,
+    #           training-params(discount, gamma, alpha, q_array_sizes, number_trained_per_game, long_term_reward),
+    #           environment-params(number_of_rounds, starting-wealth,
+    #                               minimum_mining_amount, number_of_agents)}
+    @staticmethod
+    def set_up_training_file(training_directory, q_array_sizes=[10, 10, 8, 5, 9], discount=0.85, gamma=0.9, alpha=0.4,
+                             starting_wealth=10000, minimum_mining_amount=10, number_of_rounds=40,
+                             number_trained_per_game=6, long_term_reward=5, agent_number_per_game=12):
+        ri = [(['X'],70), (['C'],30), (['X4', 'O2', 'X3'],80), (['C1', 'C4'],20)]
+        tw = [(['A'],70), (['H4', 'H2', 'A2', 'O2'], 70), (['X2'],25), (['X3'],90)]
+        co = [(['E'],30), (['H3', 'H2', 'E3'], 25), (['E2'],10), (['C4'],80)]
+        p  = [(['C'],30), (['O'],90)]
+        me = [(['A'],30), (['O'],75), (['X3'], 30), (['X4'], 25), (['O2', 'H2'],75)]
+        s  = [(['A'],20), (['X'],80), (['X4', 'X2'],90), (['C2'],70), (['C4'],30)]
+        i  = [(['C'],80), (['O'],30), (['X2'],70)]
+        cf = [(['E'],20), (['C'],80), (['E2'],10), (['C3'],90)]
+        pmap = {'RI': ri, 'TW': tw, 'CO': co, 'P':p, 'ME': me, 'S':s, 'I':i, 'CF': cf}
+        cmap = {'RI': ('?', '?'), 'TW': ('?', '?'), 'CO': (0.8, '?'), 'P': (0.8, '?'), 'ME': ('?', '?'), 'S': ('?', '?'),
+                'I': ('?', '?'), 'CF': ('?', '?')}
+        amap = {}
+        id_to_q = {}
+
+        template = HexacoPersonality()
+        for d in pmap:
+            for mp in [(0.2,'L'), (0.5,'M'), (0.8,'H')]:
+                for ap in [(0.3,'L'), (0.7,'H')]:
+                    person = pmap[d]
+                    m, mc = mp
+                    a, ac = ap
+                    id = d + "*" + mc + ac
+                    comp = (m, a)
+                    amap[id] = (id, comp, template.set_values(template.average(),person))
+                    q = np.array(np.zeros(q_array_sizes))
+                    id_to_q[id] = q.tolist()
+
+        ids = list(amap.keys())
+        random.shuffle(ids)
+
+        config = ((discount, gamma, alpha, q_array_sizes, number_trained_per_game, long_term_reward),
+                  (number_of_rounds, starting_wealth, minimum_mining_amount, agent_number_per_game),
+                  ids)
+
+        progress = []
+
+        t = time.time()
+
+        with open(training_directory + "/Progress.json", 'w') as fp:
+            json.dump(progress, fp)
+
+        with open(training_directory + "/Training.json", 'w') as fp:
+            json.dump(id_to_q, fp)
+
+        with open(training_directory + "/config.json", 'w') as fp:
+            json.dump(config, fp)
+
+        with open(training_directory + "/Agents.json", 'w') as fp:
+            json.dump(amap, fp)
+
+        print("Elapsed: ", time.time()-t)
+
+    @staticmethod
+    def resume_training(training_directory):
+        config = Experiment.get_json(training_directory + "/config.json")
+        agent_info = Experiment.get_json(training_directory + "/Agents.json")
+        progress = Experiment.get_json(training_directory + "/Progress.json")
+        training_data = Experiment.get_json(training_directory + "/Training.json")
+        if config is None or agent_info is None or progress is None or training_data is None:
+            return None
+
+        tparams, eparams, torder = config
+        d, g, a, qs, npg, ltr = tparams
+        nr, sw, mma, na = eparams
+
+        last = progress[len(progress)-1] if len(progress) > 0 else None
+        cp = last[1] if last is not None else -1
+
+        count = last[0] if last is not None else 0
+
+        success, failures = 0, 0
+
+        while count < 1000:
+
+            try:
+                cp += 1
+                count += 1
+
+                num_train = min(na, npg, len(torder))
+                num_static = na - num_train
+
+                to_train = []
+                aids = torder.copy()
+                for i in range(cp, cp + num_train):
+                    a = torder[i % len(torder)]
+                    to_train.append(a)
+                    aids.remove(a)
+
+                cp = (cp + num_train) % len(torder)
+
+                static = []
+                for i in range(num_static):
+                    r = aids[random.randrange(len(aids))]
+                    static.append(r)
+                    aids.remove(r)
+
+                agents = []
+                for id in to_train:
+                    Q = np.array(training_data[id])
+                    name, competency, personality = agent_info[id]
+                    m, a = competency
+                    agent = LearningAgent(name, Competency(m,a), personality, id, True, ltr, qs, Q, d, g, a)
+                    agents.append(agent)
+
+                for id in static:
+                    name, competency, personality = agent_info[id]
+                    m, a = competency
+                    agent = Agent(name, Competency(m,a), personality, id)
+                    agents.append(agent)
+
+                gui_requests, hierarchy, training = RunningSimulation.simulate(agents, False, nr, False)
+                data = training['training']
+
+                for id in data:
+                    training_data[id] = data[id]
+
+                entry = (count, cp, [agent.generation_id for agent in agents], tparams, eparams)
+                progress.append(entry)
+
+                with open(training_directory + "/Progress.json", 'w') as fp:
+                    json.dump(progress, fp)
+
+                with open(training_directory + "/Training.json", 'w') as fp:
+                    json.dump(training_data, fp)
+
+                success += 1
+            except:
+                failures += 1
+                print("Something went wrong - this run failed")
+
+            print("Success count: ", success, " Failure count: ", failures)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     @staticmethod
     def run_x_vs_earned_experiment(agent_var,total_number_of_agents, directory, starting=1, ending=9, number_of_repeats=3, number_of_rounds=40, starting_wealth=10000,
                                    minimum_mining_amount=10):
@@ -288,7 +462,6 @@ class Experiment:
                 json.dump(d, fp)
 
         print("Finished experiment for " + xl)
-
 
     @staticmethod
     def run_interaction_vs_earn(total_number_of_agents, directory, starting=1, ending=9, number_of_repeats=3, number_of_rounds=40, starting_wealth=10000,
@@ -433,13 +606,10 @@ class Experiment:
         }
         return data
 
-
-
     @staticmethod
     def estimated_time_seconds(number_of_rounds):
         s = 32
         return s * number_of_rounds/40
-
 
     @staticmethod
     def run_all_experiments(total_number_of_agents, agent_variable_experiment_directory,
@@ -466,8 +636,6 @@ class Experiment:
                                                   minimum_mining_amount)
 
         Experiment.run_interaction_vs_earn(total_number_of_agents, interaction_experiment_directory, start, end, repeats)
-
-
 
     @staticmethod
     def plot(agent_var, directory):
@@ -536,13 +704,11 @@ class Experiment:
         return csv_string
 
 
-
     @staticmethod
     def construct_line(variable1, variable2, r, pr, rs, ps):
         line = variable1 + "," + variable2 + "," + str(rs) + "," + str(ps) + "," + str(r) + "," + str(pr)
         line += "\n"
         return line
-
 
     @staticmethod
     def load_graph(path_to_json, show=True, csv_string="", should_draw=True):
@@ -582,7 +748,6 @@ class Experiment:
     @staticmethod
     def display():
         plt.show()
-
 
     @staticmethod
     def show_experiment_results(agent_variable_directory, interaction_directory, agent_variables_to_display, should_display_interaction_graphs, file_path, show=True):
@@ -631,7 +796,6 @@ class Experiment:
         f = float(x)
         f = 0 if math.isnan(f) else f
         return f
-
 
     @staticmethod
     def check_values(expected_csv_file_location, actual_csv_file_location, save_location, alpha=0.09, start_positive=0.2, start_negative=-0.2):

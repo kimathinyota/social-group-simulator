@@ -4,14 +4,18 @@ import functools
 
 class LearningAgent(Agent):
 
+    type = "Learning"
+
     # Q matrix:[competency state: 10][round state: 10][agent variables: 8][agent level: 5][interaction choice: 9]
 
-    def __init__(self, name, competency, personality, generation_id=None, is_training=True, long_term_round_count=4, q_array_sizes=[10, 10, 8, 5, 9]):
+    def __init__(self, name, competency, personality, generation_id=None, is_training=True, long_term_round_count=5, q_array_sizes=[10, 10, 8, 5, 9], Q=None, discount=0.85, gamma=0.9, alpha=0.4):
         super(LearningAgent, self).__init__(name, competency, personality, generation_id)
         # q_array_sizes: [#competency state][#round states][#agent variables][#agent level][#interaction choice]
         self.q_array_sizes = q_array_sizes
         # initalise Q with zeros
-        self.Q = np.array(np.zeros(q_array_sizes))
+        self.Q = Q
+        if self.Q is None:
+            self.Q = np.array(np.zeros(q_array_sizes))
         # this agent's earnings each round
         self.my_earnings_each_round = []
         self.my_mining_earnings_each_round = []
@@ -20,7 +24,7 @@ class LearningAgent(Agent):
         self.q_lock = threading.Lock()
         # each action has a long-term effect that'll need to be rewarded/punished so updating q-values will be delayed
         self.delayed_q_entries = []
-        self.discount = 0.95
+        self.discount = 0.85
         self.gamma = 0.9
         self.alpha = 0.4
         self.action_probabilities = []
@@ -29,13 +33,13 @@ class LearningAgent(Agent):
     @staticmethod
     def position(value, number_levels, s=0, e=1):
         pos = math.floor(value/(e-s) * number_levels)
-        return pos
+        return min(pos, number_levels - 1)
 
     def reward(self, interaction, start, finish):
         # start = round where interaction took place
         # finish = round where impact of interaction is said to have ended
         # reward = money_earnt(interaction) + SUM_(start->finish){discount^(round-start)*money_earnt(round)}
-        interaction_to_earned = self.interaction_to_earned[start]
+        interaction_to_earned = self.interaction_to_earned[start] if start in self.interaction_to_earned else {}
         # calculate total absolute earned in start
         # using this method instead of my_earnings_each_round: concerned with absolute ratios ...
         # ... so -7, -2, 1: (-7/10, -2/10, 1/10) not (7/8, 2/8, -1/8)
@@ -45,18 +49,30 @@ class LearningAgent(Agent):
         iid = str(interaction.id)
         # iearn = amount earned by interaction
         iearn = interaction_to_earned[iid] if iid in interaction_to_earned else 0
+        # print("Earned: ", iearn, iid in interaction_to_earned, total)
         iearn /= (total if total > 0 else 1)
 
         # end <= len(my_earnings_each_round)
         end = min(start + finish+1, len(self.my_earnings_each_round))
         earnings = self.my_earnings_each_round[start:end]
-        sum = functools.reduce(lambda x, y: abs(x) + y, earnings)
+
+        # Average earning
+        avg = (functools.reduce(lambda x, y: abs(x) + y, earnings)) / len(earnings)
+
+        # Normalise earnings
+        r = math.pow(10, int(math.log(avg, 10) + 1))
+        x = [i/r for i in earnings]
 
         total = 0
-        for i in range(len(earnings)):
-            e = earnings[i] / sum
-            total += e * math.pow(self.discount, i)
-        score = iearn + total
+        # Find cumalitive total of discounted normalised earnings
+        for i in range(len(x)):
+            total += x[i]*math.pow(self.discount, i+1)
+
+        m = 0
+        for i in range(1, len(earnings) + 1):
+            m += math.pow(self.discount, i)
+        score = iearn + total/m
+        # print([interaction, interaction.is_caught if isinstance(interaction,Theft) else None, [score, iearn, total], earnings])
         return score
 
     def get_other_state(self, agent):
@@ -118,12 +134,9 @@ class LearningAgent(Agent):
 
     def learn_from_interaction(self, interaction, start, finish):
         # Format: Type IsProactive IsPick Probability Agent
-
         # print("Learn", interaction, start, finish)
         # print("Keys", list(self.action_probabilities[start].keys()))
         # print("Bro", self.action_probabilities)
-
-
         probabilities = self.action_probabilities[start][str(interaction.id)]
 
         is_proactive = interaction.proactive_agent.generation_id = self.generation_id
@@ -134,7 +147,7 @@ class LearningAgent(Agent):
         me = interaction.proactive_agent if is_proactive else interaction.reactive_agent
 
         comp_states = self.get_my_comp_state(me.competency)
-
+        # print("-------------------------------------------------------------------------------------------------")
         for c in comp_states:
             for avar in self.var_map.keys():
                 sum = 0
@@ -148,8 +161,12 @@ class LearningAgent(Agent):
 
                 positions = self.get_q_positions(c, other, start, avar, action)
                 comp_state, round_pos, var_pos, var_level, action = positions
+
                 q = self.Q[comp_state][round_pos][var_pos][var_level][action]
                 td = (reward + sum) - q
+                # x = str([interaction, start, finish]) + " " + str(interaction.is_success) + " Q " + str(comp_state) + " " + str(round_pos) + " " + str(var_pos) + " " + str(var_level) + " " + str(action) \
+                #     + " " + str([reward, q, td])
+                # print(x)
                 self.Q[comp_state][round_pos][var_pos][var_level][action] += self.alpha*td
 
     def get_q_positions(self, comp_state, agent, round, agent_variable, action):
@@ -174,12 +191,17 @@ class LearningAgent(Agent):
         super(LearningAgent, self).start_interacting(in_prison)
 
     def learn(self):
+        remove = []
         for i in range(len(self.delayed_q_entries)):
-            interaction, start, finish = self.delayed_q_entries[i]
-            if (self.current_round-1) < finish and (self.current_round-1) < self.environment.number_of_rounds:
+            entry = self.delayed_q_entries[i]
+            interaction, start, finish = entry
+            if self.current_round < finish and (self.current_round-1) < self.environment.number_of_rounds:
                 # hasn't reached that point yet - delayed_q_entries is in chronological order
+                for r in remove:
+                    self.delayed_q_entries.remove(r)
                 return None
             self.learn_from_interaction(interaction, start, finish)
+            remove.append(entry)
 
     def stop_mining(self):
         self.my_earnings_each_round.append(self.environment.get_agent_earnings_this_round(self))
@@ -232,6 +254,15 @@ class LearningAgent(Agent):
                                                                                      other.copy())]
             return random_boolean_variable(accept)
 
+    @staticmethod
+    def random(name):
+        return LearningAgent(name, Competency.random(), HexacoPersonality().random_personality())
+
+    def stop_running(self):
+        super(LearningAgent, self).stop_running()
+        # x = "Stopped running: " + str(self) + " " + str(self.competency) + " " + str(self.personality)
+        # print(x)
+
     def run(self):
         self.is_running = True
         while self.is_running:
@@ -273,3 +304,4 @@ class LearningAgent(Agent):
                 for interaction in respond_to:
                     interaction.respond(self)
             self.has_stopped_interaction = not self.is_interacting
+
