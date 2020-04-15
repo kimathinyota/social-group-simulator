@@ -9,6 +9,7 @@ import numpy as np
 import scipy.stats
 import json
 import csv
+from src.SocialAnalysis import *
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.cm as cm
 
@@ -51,14 +52,14 @@ class RunningSimulation:
                  starting_wealth=10000, minimum_mining_amount=10,
                  training_save_location="/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training/training.json"):
         environment = ResourceMiningEnvironment(starting_wealth,minimum_mining_amount,number_of_rounds,should_test)
-        gui_requests, analysis, hierarchy, training = RunningSimulation.run_environment(environment,agents)
+        gui_requests, analysis, hierarchy, training, rinteracts = RunningSimulation.run_environment(environment,agents)
         if should_upload:
             RunningSimulation.upload_to_database(analysis)
 
         if should_display:
             RunningSimulation.display_gui(gui_requests)
 
-        return gui_requests, hierarchy, training
+        return gui_requests, hierarchy, training, rinteracts
 
 
 class Experiment:
@@ -271,15 +272,22 @@ class Experiment:
         i  = [(['C'],80), (['O'],30), (['X2'],70)]
         cf = [(['E'],20), (['C'],80), (['E2'],10), (['C3'],90)]
         pmap = {'RI': ri, 'TW': tw, 'CO': co, 'P':p, 'ME': me, 'S':s, 'I':i, 'CF': cf}
-        cmap = {'RI': ('?', '?'), 'TW': ('?', '?'), 'CO': (0.8, '?'), 'P': (0.8, '?'), 'ME': ('?', '?'), 'S': ('?', '?'),
+        cmap = {'RI': ('?', '?'), 'TW': ('?', '?'), 'CO': ([(0.8,'H')], '?'), 'P': ([(0.8,'H')], '?'), 'ME': ('?', '?'), 'S': ('?', '?'),
                 'I': ('?', '?'), 'CF': ('?', '?')}
         amap = {}
         id_to_q = {}
 
         template = HexacoPersonality()
         for d in pmap:
-            for mp in [(0.2,'L'), (0.5,'M'), (0.8,'H')]:
-                for ap in [(0.3,'L'), (0.7,'H')]:
+            aq, mq = cmap[d]
+            possiblems = [(0.2,'L'), (0.5,'M'), (0.8,'H')]
+            if mq != '?':
+                possiblems = mq
+            for mp in possiblems:
+                possibleas = [(0.3,'L'), (0.7,'H')]
+                if aq != '?':
+                    possibleas = aq
+                for ap in possibleas:
                     person = pmap[d]
                     m, mc = mp
                     a, ac = ap
@@ -315,6 +323,63 @@ class Experiment:
         print("Elapsed: ", time.time()-t)
 
     @staticmethod
+    def get_training_agents(training_directory, learningAgentIDs, staticAgentIDs):
+        agent_info = Experiment.get_json(training_directory + "/Agents.json")
+        training_data = Experiment.get_json(training_directory + "/Training.json")
+        config = Experiment.get_json(training_directory + "/config.json")
+        if agent_info is None or config is None or training_data is None:
+            return None
+        agents = []
+        tparams, eparams, torder = config
+        d, g, a, qs, npg, ltr = tparams
+        print(list(agent_info.keys()))
+        for id in learningAgentIDs:
+            Q = np.array(training_data[id])
+            name, competency, personality = agent_info[id]
+            m, a = competency
+            agent = LearningAgent(name, Competency(m, a), personality, id, False, ltr, qs, Q, d, g, a)
+            agents.append(agent)
+
+        for id in staticAgentIDs:
+            name, competency, personality = agent_info[id]
+            m, a = competency
+            agent = Agent(name, Competency(m,a), personality, id)
+            agents.append(agent)
+
+        return agents, eparams
+
+    @staticmethod
+    def simulate_with_training_data(training_directory, learningAgentIDs, staticAgentIDs, should_display, number_of_rounds=40, should_upload=True,
+                                    should_test=False, starting_wealth=10000, minimum_mining_amount=10):
+        agents, eparams = Experiment.get_training_agents(training_directory, learningAgentIDs, staticAgentIDs)
+        print("Running simulation on agents trained with environment: ", eparams)
+        return RunningSimulation.simulate(agents, should_display, number_of_rounds, should_upload, should_test,
+                                          starting_wealth, minimum_mining_amount)
+
+    @staticmethod
+    def testing_training_environment():
+        training_directory = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training"
+        # pmap = {'RI': ri, 'TW': tw, 'CO': co, 'P':p, 'ME': me, 'S':s, 'I':i, 'CF': cf}
+        # {'RI': ('?', '?'), 'TW': ('?', '?'), 'CO': ([(0.8,'H')], '?'), 'P': ([(0.8,'H')], '?'), 'ME': ('?', '?'), 'S': ('?', '?'),
+        #                 'I': ('?', '?'), 'CF': ('?', '?')}
+        lids = ["RI*LL"]
+        sids = ["TW*LL", "P*LH", "ME*LL", "S*LL", "CF*LL"]
+
+        gui_requests, hierarchy, training, rinteracts = Experiment.simulate_with_training_data(training_directory,
+                                                                                               lids, sids, False)
+        social_structures = SocialAnalysis.find_social_structures(rinteracts)
+        print(social_structures)
+
+        interactions = []
+        for round in rinteracts:
+            interactions += rinteracts[round]
+
+        print(SocialAnalysis.power_distribution(interactions))
+
+
+
+
+    @staticmethod
     def resume_training(training_directory):
         config = Experiment.get_json(training_directory + "/config.json")
         agent_info = Experiment.get_json(training_directory + "/Agents.json")
@@ -334,8 +399,7 @@ class Experiment:
 
         success, failures = 0, 0
 
-        while count < 1000:
-
+        while count < 6000:
             try:
                 cp += 1
                 count += 1
@@ -388,7 +452,8 @@ class Experiment:
                     json.dump(training_data, fp)
 
                 success += 1
-            except:
+            except Exception as e:
+                print(e)
                 failures += 1
                 print("Something went wrong - this run failed")
 
@@ -823,6 +888,7 @@ class Experiment:
                 line += result
             line += "\n"
             Experiment.update_file(save_location, line)
+
 
 
 

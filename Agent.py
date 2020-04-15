@@ -191,6 +191,10 @@ class Agent:
             self.agent_information[agent]["NoRounds"] += 1
         self.access_agent_information_lock.release()
 
+    def get_agents(self):
+        agents = [agent for agent in self.agent_information if agent != self]
+        return agents
+
     def add_new_agent(self, agent, wealth, personality, competency):
         interactions = {Friendship: ([],[]), Mentorship: ([],[]), Help: ([],[]), Theft: ([],[]) }
         info = {"Wealth": wealth, "Personality": personality, "Competency": competency, "Interactions":interactions, "NoRounds": 1}

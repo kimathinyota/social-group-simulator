@@ -151,6 +151,8 @@ class ResourceMiningEnvironment:
 
         self.should_test = should_test
 
+        self.round_to_interactions = {}
+
     def display(self, code, args):
         self.access_display_lock.acquire()
         self.display_requests.append(ServiceGUI.construct_request(code,args))
@@ -429,6 +431,8 @@ class ResourceMiningEnvironment:
         self.in_mining_mode = True
         for agent in self.active_agents:
             agent.stop_interacting()
+        self.round_to_interactions[self.current_round] = [interaction for interaction in self.confirmed_interactions
+                                                          if interaction.is_success]
 
     def have_all_agents_stopped_interacting(self):
         all_stoped = True
@@ -514,7 +518,6 @@ class ResourceMiningEnvironment:
             exchanges = self.interactions_to_promised_exchanges[interaction]
             for exchange in exchanges:
                 self.process_now(exchange)
-
 
         self.display(4, [[agent.copy() for agent in self.active_agents]])
 
@@ -665,7 +668,7 @@ class ResourceMiningEnvironment:
                     hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(),
                                             key=operator.itemgetter(1)))
                     training = self.get_training_data()
-                    return self.display_requests, self.analysis, hierarchy, training
+                    return self.display_requests, self.analysis, hierarchy, training, self.round_to_interactions
 
                 self.stop_mining()
                 self.get_environment_ready_for_interactions()
@@ -675,7 +678,7 @@ class ResourceMiningEnvironment:
         #print("Elapsed", (time.time() - start))
         hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(), key=operator.itemgetter(1)))
         training = self.get_training_data()
-        return self.display_requests, self.analysis, hierarchy, training
+        return self.display_requests, self.analysis, hierarchy, training, self.round_to_interactions
 
 
 class Interaction:
