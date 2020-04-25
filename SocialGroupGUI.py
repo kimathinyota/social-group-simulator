@@ -863,7 +863,6 @@ class SocialGroupGUI:
 
             elif isinstance(interaction, environ.Theft):
                 s = interaction.get_stolen_funds()
-                print(s)
                 funds = "-" + str(s) if s < 0 else str(s)
                 if interaction.is_caught:
                     components.append(self.get_text(tp2, funds, size, "black", "arial", "bold"))

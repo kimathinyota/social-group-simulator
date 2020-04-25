@@ -78,6 +78,7 @@ class ResourceMiningEnvironment:
         self.analysis = Analysis()
 
         self.resource_total = resource_total
+        self.starting_wealth = resource_total
         self.minimum_mine = minimum_mine
         self.average_number_of_interactions_in_first_window = 20
 
@@ -151,7 +152,9 @@ class ResourceMiningEnvironment:
 
         self.should_test = should_test
 
-        self.round_to_interactions = {}
+        self.round_to_interactions_to_earnings = {}
+        self.round_to_agent_to_mine = {}
+        self.round_to_hierarchy = {}
 
     def display(self, code, args):
         self.access_display_lock.acquire()
@@ -249,7 +252,12 @@ class ResourceMiningEnvironment:
 
         high = 0
 
-        for interaction_type in interactions_copy:
+        interaction_types = list(interactions_copy.keys())
+
+        if self.current_round == 0:
+            interaction_types.remove(Theft)
+
+        for interaction_type in interaction_types:
             # cant repeat a confirmed interaction
             for interaction in interactions_copy[interaction_type]:
                 interaction.initiate_interaction()
@@ -418,8 +426,26 @@ class ResourceMiningEnvironment:
         self.in_mining_mode = False
         self.in_interaction_mode = False
         self.in_before_interaction_mode = True
+        a_to_wealth = {}
+        a_to_mining = {}
         for agent in self.active_agents:
             agent.stop_mining()
+            a_to_mining[agent.generation_id] = agent.get_current_mining_earnings()
+            a_to_wealth[agent.generation_id] = agent.wealth
+        self.round_to_hierarchy[self.current_round] = a_to_wealth
+
+        interaction_earning = {}
+        for interaction in self.confirmed_interactions:
+            if interaction.is_success:
+                p = interaction.proactive_agent
+                r = interaction.reactive_agent
+                pe = p.get_current_interaction_earning(interaction.id)
+                re = r.get_current_interaction_earning(interaction.id)
+                pe, re = 0 if pe is None else pe, 0 if re is None else re
+                interaction_earning[interaction] = [pe, re]
+
+        self.round_to_agent_to_mine[self.current_round] = a_to_mining
+        self.round_to_interactions_to_earnings[self.current_round] = interaction_earning
 
     def elapsed_time(self):
         return time.time() - self.interaction_timer
@@ -431,8 +457,6 @@ class ResourceMiningEnvironment:
         self.in_mining_mode = True
         for agent in self.active_agents:
             agent.stop_interacting()
-        self.round_to_interactions[self.current_round] = [interaction for interaction in self.confirmed_interactions
-                                                          if interaction.is_success]
 
     def have_all_agents_stopped_interacting(self):
         all_stoped = True
@@ -473,7 +497,9 @@ class ResourceMiningEnvironment:
                 self.resource_total -= mine
                 agent_to_mined[agent] = mine
                 self.analysis.add_money_earnings(agent,mine,self.current_round)
-                agent.increase_wealth(amount=mine,should_display=False,should_notify_environment=False,should_notify_all=False)
+                agent.add_mining_earnings(mine)
+            else:
+                agent.add_mining_earnings(0)
 
             # improve competency and personality for each agent
             e = agent.personality_template.dimension_percentage(agent.personality, 'X')
@@ -485,7 +511,7 @@ class ResourceMiningEnvironment:
             m2 = min(m*improve_m,1)
             a2 = min(a*improve_a,1)
 
-            if not(m==1 and a==1):
+            if not(m == 1 and a == 1):
                 self.analysis.add_competency_earnings(agent,m2-m,a2-a,self.current_round)
 
             agent.competency.update(m2,a2)
@@ -561,7 +587,6 @@ class ResourceMiningEnvironment:
         for interaction in self.all_requested_interactions:
             interaction.reset()
 
-
         # for agent in self.active_agents:
         #     if agent in self.agent_to_possible_interactions:
         #         type_to_interactions = self.agent_to_possible_interactions[agent]
@@ -587,6 +612,13 @@ class ResourceMiningEnvironment:
         self.is_running = False
         for agent in self.active_agents:
             agent.stop_running()
+
+    def introduced_gold(self):
+        gold_spent = self.starting_wealth - self.resource_total
+        total_wealth = 0
+        for agent in self.active_agents:
+            total_wealth += agent.wealth
+        return total_wealth - gold_spent
 
     def run_test_on_test_variables(self):
         if self.should_test:
@@ -658,27 +690,24 @@ class ResourceMiningEnvironment:
                 self.handle_mining()
 
                 x = "Simulated round " + str(self.current_round)
-                #print(x)
+                # print(x)
 
                 self.run_test_on_test_variables()
 
                 if (self.current_round + 1) > self.number_of_rounds:
+                    self.stop_mining()
                     self.stop_running()
-                    #print("Elapsed", (time.time() - start))
-                    hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(),
-                                            key=operator.itemgetter(1)))
                     training = self.get_training_data()
-                    return self.display_requests, self.analysis, hierarchy, training, self.round_to_interactions
+                    return self.display_requests, self.analysis, self.round_to_hierarchy, training, \
+                           self.round_to_interactions_to_earnings, self.round_to_agent_to_mine
 
                 self.stop_mining()
                 self.get_environment_ready_for_interactions()
 
-
         self.stop_running()
-        #print("Elapsed", (time.time() - start))
-        hierarchy = list(sorted({agent: agent.wealth for agent in self.active_agents}.items(), key=operator.itemgetter(1)))
         training = self.get_training_data()
-        return self.display_requests, self.analysis, hierarchy, training, self.round_to_interactions
+        return self.display_requests, self.analysis, self.round_to_hierarchy, training, \
+               self.round_to_interactions_to_earnings, self.round_to_agent_to_mine
 
 
 class Interaction:
@@ -896,7 +925,7 @@ class Friendship(Interaction):
                                        interaction_id=self.id, should_notify_all=False, should_display=False,
                                        should_notify_environment=True)
         exchange = Exchange(self.proactive_agent, self.reactive_agent, friend_token, friend_token)
-        ResourceMiningEnvironment.process_later(self.environment,self,exchange)
+        ResourceMiningEnvironment.process_later(self.environment, self, exchange)
 
     def can_happen(self):
         # only condition is that other person accepts

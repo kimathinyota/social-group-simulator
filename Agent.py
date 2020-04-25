@@ -109,7 +109,7 @@ class Agent:
         self.personality = personality
 
         self.interact_earn_lock = threading.Lock()
-        self.interaction_to_earned = []
+        self.interaction_to_earned = [{}]
 
         # assigned environment
         self.environment = None
@@ -153,6 +153,7 @@ class Agent:
 
         self.access_agent_information_lock = threading.Lock()
         self.agent_information = {}
+        self.round_to_mining_earnings = {}
 
     def acquire_interact_lock(self):
         self.interact_lock.acquire()
@@ -183,6 +184,24 @@ class Agent:
                 self.interaction_to_earned.append({})
         self.interaction_to_earned[c][str(interaction_id)] = earnings
         self.interact_earn_lock.release()
+
+    def add_mining_earnings(self, mine):
+        c = (self.current_round - 1)
+        self.round_to_mining_earnings[c] = mine
+        self.increase_wealth(amount=mine,should_display=False,should_notify_environment=False,should_notify_all=False)
+
+    def get_current_mining_earnings(self):
+        c = (self.current_round - 1)
+        return self.round_to_mining_earnings[c]
+
+    def get_current_interaction_earning(self, interaction_id):
+        c = (self.current_round - 1)
+        if len(self.interaction_to_earned) <= c:
+            for i in range(len(self.interaction_to_earned), c + 1):
+                self.interaction_to_earned.append({})
+        ite = self.interaction_to_earned[c]
+        key = str(interaction_id)
+        return ite[key] if key in ite else 0
 
     def increment_no_rounds(self):
         self.access_agent_information_lock.acquire()
@@ -228,6 +247,7 @@ class Agent:
         self.environment.notify_wealth_increase(amount, self, should_notify_all=should_notify_all, should_display=should_display, should_notify_environment=should_notify_environment)
         if interaction_id is not None:
             self.add_interaction_earnings(interaction_id, amount)
+
 
     def number_of_times_stolen_from_me(self, agent):
         reactive_thefts = self.interactions[Theft][1].copy()
@@ -589,8 +609,8 @@ class Agent:
         pass
 
     @staticmethod
-    def random(name):
-        return Agent(name,Competency.random(),HexacoPersonality().random_personality())
+    def random(name, gid=None):
+        return Agent(name,Competency.random(),HexacoPersonality().random_personality(),gid)
 
     def stop_running(self):
         self.is_running = False

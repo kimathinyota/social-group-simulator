@@ -9,6 +9,7 @@ import numpy as np
 import scipy.stats
 import json
 import csv
+import collections
 from src.SocialAnalysis import *
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.cm as cm
@@ -49,17 +50,23 @@ class RunningSimulation:
     # check = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training/training.json"
     @staticmethod
     def simulate(agents, should_display, number_of_rounds=40, should_upload=True, should_test=False,
-                 starting_wealth=10000, minimum_mining_amount=10,
+                 starting_wealth=10000, minimum_mining_amount=10, should_social_analyse=False,
                  training_save_location="/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training/training.json"):
         environment = ResourceMiningEnvironment(starting_wealth,minimum_mining_amount,number_of_rounds,should_test)
-        gui_requests, analysis, hierarchy, training, rinteracts = RunningSimulation.run_environment(environment,agents)
+        gui_requests, analysis, hierarchy, training, rinteracts, ram = RunningSimulation.run_environment(environment,agents)
+
         if should_upload:
             RunningSimulation.upload_to_database(analysis)
 
         if should_display:
             RunningSimulation.display_gui(gui_requests)
 
-        return gui_requests, hierarchy, training, rinteracts
+        social_analysis = False
+        if should_social_analyse:
+            social_analysis = SocialAnalysisResult(rinteracts, hierarchy, ram,
+                                                   [agent.generation_id for agent in agents])
+
+        return gui_requests, hierarchy, training, social_analysis
 
 
 class Experiment:
@@ -332,7 +339,6 @@ class Experiment:
         agents = []
         tparams, eparams, torder = config
         d, g, a, qs, npg, ltr = tparams
-        print(list(agent_info.keys()))
         for id in learningAgentIDs:
             Q = np.array(training_data[id])
             name, competency, personality = agent_info[id]
@@ -375,9 +381,6 @@ class Experiment:
             interactions += rinteracts[round]
 
         print(SocialAnalysis.power_distribution(interactions))
-
-
-
 
     @staticmethod
     def resume_training(training_directory):
@@ -436,7 +439,7 @@ class Experiment:
                     agent = Agent(name, Competency(m,a), personality, id)
                     agents.append(agent)
 
-                gui_requests, hierarchy, training = RunningSimulation.simulate(agents, False, nr, False)
+                gui_requests, hierarchy, training, socialAnalysis = RunningSimulation.simulate(agents, False, nr, False)
                 data = training['training']
 
                 for id in data:
@@ -458,6 +461,242 @@ class Experiment:
                 print("Something went wrong - this run failed")
 
             print("Success count: ", success, " Failure count: ", failures)
+
+    @staticmethod
+    def contains(lists_of_lists, list):
+        counter = collections.Counter(list)
+        for a in lists_of_lists:
+            if collections.Counter(a) == counter:
+                return True
+        return False
+
+
+
+
+    @staticmethod
+    def analyse_main_experiment_results(experiment_directory):
+        config = Experiment.get_json(experiment_directory + "/config.json")
+        static_results = Experiment.get_json(experiment_directory + "/static_experiment_results.json")
+        training_results = Experiment.get_json(experiment_directory + "/training_experiment_results.json")
+
+        if config is None or static_results is None or training_results is None:
+            return None
+
+        combinations, eparams = config
+        number_of_rounds, starting_wealth, minimum_mining_amount, agent_number_per_game = eparams
+
+
+
+
+
+    @staticmethod
+    def spread_out_combinations(number):
+        pmap = ['RI', 'TW', 'CO', 'P', 'ME', 'S', 'I', 'CF']
+
+        ah_roles = ['CO', 'P']
+        mt, at = ['L', 'M', 'H'], ['L', 'H']
+        mine = {a: [0, 0, 0] for a in pmap}
+        appr = {a: [0, 0] for a in pmap}
+
+        extra_agents = {a: 0 for a in pmap}
+
+        runs = []
+        for i in range(number):
+            extra = list(sorted(extra_agents.keys(), key=lambda key: extra_agents[key]))[0:4]
+            for e in extra:
+                extra_agents[e] += 1
+            roles = pmap + extra
+
+            random.shuffle(roles)
+
+            order = [0, 1, 2]
+            random.shuffle(order)
+
+            new_roles = roles.copy()
+            r_to_m = []
+            for o in order:
+                m = {a: mine[a] for a in new_roles}
+                mp = {}
+                repeats = {}
+                for i in range(len(new_roles)):
+                    a = new_roles[i]
+                    scr = repeats[a] if a in repeats else 0
+                    repeats[a] = scr + 1
+                    mp[(a, i)] = mine[a][o] + scr
+
+                chosen = list(sorted(mp.keys(), key=lambda key: mp[key]))[0:4]
+                chosen = [a for (a, b) in chosen]
+
+                for c in chosen:
+                    mine[c][o] += 1
+                    r_to_m.append((c, mt[o]))
+                    new_roles.remove(c)
+
+            hs = ah_roles + [e for e in extra if e in ah_roles]
+
+            new_roles = roles.copy()
+            order = [0, 1]
+            random.shuffle(order)
+            r_to_a = []
+
+            for c in hs:
+                appr[c][1] += 1
+                r_to_a.append((c, 'H'))
+                new_roles.remove(c)
+            ap = {}
+            repeats = {}
+            for i in range(len(new_roles)):
+                a = new_roles[i]
+                scr = repeats[a] if a in repeats else 0
+                repeats[a] = scr + 1
+                ap[(a,i)] = appr[a][1] + scr
+
+            # print("HS", hs)
+            chosen = list(sorted(ap.keys(), key=lambda key: ap[key]))[0:(6 - len(hs))]
+
+            #print(chosen)
+            chosen = [a for (a,b) in chosen]
+            # print("AHs", chosen, hs)
+
+            for c in chosen:
+                appr[c][1] += 1
+                r_to_a.append((c, 'H'))
+                new_roles.remove(c)
+
+            for c in new_roles:
+                appr[c][0] += 1
+                r_to_a.append((c, 'L'))
+
+            agents = []
+
+            # print("M", r_to_m)
+            # print("A", r_to_a)
+
+            for a in r_to_m:
+                n, m = a
+                l = list([u for (u, v) in r_to_a])
+                p = r_to_a[l.index(n)]
+                agents.append((n, m, p[1]))
+                r_to_a.remove(p)
+
+            #print("Agents", agents)
+
+
+            if not Experiment.contains(runs, agents):
+                runs.append(agents)
+
+        return runs
+
+    @staticmethod
+    def count(runs):
+        mdict = {'L': 0, 'M': 0, 'H': 0}
+        adict = {'L': 0, 'H': 0}
+        agdict = {}
+        for run in runs:
+            for entry in run:
+                agent, m, a = entry
+                t = agdict[agent] if agent in agdict else 0
+                agdict[agent] = t + 1
+                mdict[m] += 1
+                adict[a] += 1
+        return agdict, mdict, adict
+
+    @staticmethod
+    def set_up_main_experiment(experiment_directory, number_of_different_combinations, starting_wealth=10000,
+                               minimum_mining_amount=10, number_of_rounds=40, agent_number_per_game=12):
+        # Config: ([Runs], eparams)
+        eparams = (number_of_rounds, starting_wealth, minimum_mining_amount, agent_number_per_game)
+        combinations = Experiment.spread_out_combinations(number_of_different_combinations)
+        a1, a2, a3 = Experiment.count(combinations)
+        print("Agents", a1)
+        print("MDict", a2)
+        print("ADict", a3)
+
+        config = (combinations, eparams)
+
+        with open(experiment_directory + "/config.json", 'w') as fp:
+            json.dump(config, fp)
+
+        # static_results = [ (SocialAnalysisResults(x3), Run, Position) ]
+
+        static_experiment_results, training_experiment_results = [], []
+        with open(experiment_directory + "/static_experiment_results.json", 'w') as fp:
+            json.dump(static_experiment_results, fp)
+        with open(experiment_directory + "/training_experiment_results.json", 'w') as fp:
+            json.dump(training_experiment_results, fp)
+
+    @staticmethod
+    def resume_main_experiment(experiment_directory, training_directory):
+        config = Experiment.get_json(experiment_directory + "/config.json")
+        static_results = Experiment.get_json(experiment_directory + "/static_experiment_results.json")
+        training_results = Experiment.get_json(experiment_directory + "/training_experiment_results.json")
+
+        if config is None or static_results is None or training_results is None:
+            return None
+
+        combinations, eparams = config
+        number_of_rounds, starting_wealth, minimum_mining_amount, agent_number_per_game = eparams
+
+        max_number_of_runs = len(combinations)
+
+        # For Experiment with trained agents:
+
+        for is_training_experiment in [True, False]:
+            if is_training_experiment:
+                current_position = 0 if len(training_results) == 0 else training_results[len(training_results) - 1][2] + 1
+            else:
+                current_position = 0 if len(static_results) == 0 else static_results[len(static_results) - 1][2] + 1
+
+            print("Starting", "Training" if is_training_experiment else "Static", "Experiment")
+            while current_position < max_number_of_runs:
+                try:
+                    run = combinations[current_position]
+                    agentIDs = [(belbin + "*" + mine + appr) for (belbin, mine, appr) in run]
+
+                    if is_training_experiment:
+                        agents = Experiment.get_training_agents(training_directory, agentIDs, [])[0]
+                    else:
+                        agents = Experiment.get_training_agents(training_directory, [], agentIDs)[0]
+
+                    results = []
+                    for i in range(3):
+                        print("Running simulations ", str(i + 1) + "/3")
+                        gui_requests, hierarchy, training, socialAnalysis = RunningSimulation.simulate(agents, False,
+                                                                                                       number_of_rounds,
+                                                                                                       False, False,
+                                                                                                       starting_wealth,
+                                                                                                       minimum_mining_amount,
+                                                                                                       True)
+                        results.append(socialAnalysis.get_data())
+
+                    entry = (results, run, current_position)
+
+                    if is_training_experiment:
+                        training_results.append(entry)
+                        with open(experiment_directory + "/training_experiment_results.json", 'w') as fp:
+                            json.dump(training_results, fp)
+
+                    else:
+                        static_results.append(entry)
+                        with open(experiment_directory + "/static_experiment_results.json", 'w') as fp:
+                            json.dump(static_results, fp)
+
+                    print("Training" if is_training_experiment else "Static", "Experiment", "Run", current_position,
+                          "Success", str(max_number_of_runs - current_position) + " left")
+                    current_position += 1
+                except Exception as e:
+                    print(e)
+                    print("Training" if is_training_experiment else "Static", "Experiment", "Run", current_position,
+                          "Something went wrong - this run failed")
+            print("Finished", "Training" if is_training_experiment else "Static", "Experiment")
+
+
+
+
+
+
+
+
 
 
 
