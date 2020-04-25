@@ -3,6 +3,7 @@ from src.Agent import *
 from src.SocialAnalysis import *
 from src.Experiment import *
 
+
 class TestingFindingSocialStructures(unittest.TestCase):
 
     @staticmethod
@@ -286,26 +287,82 @@ class TestingFindingSocialStructures(unittest.TestCase):
         metric = PowerMetrics(power)
         return metric
 
+    @staticmethod
+    def generate_power_stability_environment(p1, p2, p3, p4, p5, x1 = 4, x2 = 4, x3 = 4, x4 = 4, x5 = 5):
+        x = x1
+        round_to_agent_to_power = {}
+        for i in range(1, x):
+            round_to_agent_to_power[i] = p1
+        y = x + x2
+        for i in range(x, y):
+            round_to_agent_to_power[i] = p2
+        z = y + x3
+        for i in range(y, z):
+            round_to_agent_to_power[i] = p3
+        e = z + x4
+        for i in range(z, e):
+            round_to_agent_to_power[i] = p4
+        f = e + x5
+        for i in range(e, f):
+            round_to_agent_to_power[i] = p5
+
+        return round_to_agent_to_power
+
+    def test_power_stability(self):
+        agents = [str(i) for i in range(1,11)]
+        dic = {'1': 5, '2': 30, '3': 55, '4': 80, '5': 100, '6': 150, '7': 200, '8': 250, '9': 320, '10': 5000}
+        dem = {'1': 100, '2': 100, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
+        rc = {'1': 10, '2': 10, '3': 10, '4': 10, '5': 10, '6': 10, '7': 10, '8': 100, '9': 100, '10': 100}
+        sc = {'1': 5, '2': 5, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
+        sl = {'1': 5, '2': 100, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
+        a = ['A','B','C', 'D']
+        b = ['A', 'C', 'B', 'D']
+
+        self.assertNotEqual(SocialAnalysis.sim(a,b, True), SocialAnalysis.sim(a,b, False))
+
+        x = PowerStability(
+            TestingFindingSocialStructures.generate_power_stability_environment(
+                dic, sl, rc, sc, sl), agents, 0.9)
+
+        y = PowerStability(
+            TestingFindingSocialStructures.generate_power_stability_environment(
+                dic, dem, rc, sc, sl), agents, 0.9)
+
+        z = PowerStability(
+            TestingFindingSocialStructures.generate_power_stability_environment(
+                rc, dem, dem, sc, sl), agents, 0.9)
+
+        print(PowerStability.merge([x.stability_info,y.stability_info, z.stability_info]))
+
     def testPowerDistributions(self):
         # Testing dictatorship
         p = { '1': 5, '2': 30, '3': 55, '4': 80, '5': 100, '6': 150, '7': 200, '8': 250, '9': 320, '10': 5000}
-        metric = self.get_power_metric(p)
-        self.assertEqual(metric.type_info[0], 'Dictatorship')
+        metric1 = self.get_power_metric(p)
+        self.assertEqual(metric1.type_info[0], 'Dictatorship')
 
         # Testing Democracy
         p = {'1': 100, '2': 100, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
-        metric = self.get_power_metric(p)
-        self.assertEqual(metric.type_info[0], 'Democracy')
+        metric2 = self.get_power_metric(p)
+        self.assertEqual(metric2.type_info[0], 'Democracy')
 
         # Tesing Ruiling Class
         p = {'1': 10, '2': 10, '3': 10, '4': 10, '5': 10, '6': 10, '7': 10, '8': 100, '9': 100, '10': 100}
-        metric = self.get_power_metric(p)
-        self.assertEqual(metric.type_info[0], 'RulingClass')
+        metric3 = self.get_power_metric(p)
+
+        self.assertEqual(metric3.type_info[0], 'RulingClass')
 
         # Testing ServantClass
         p = {'1': 5, '2': 5, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
-        metric = self.get_power_metric(p)
-        self.assertEqual(metric.type_info[0], 'ServantClass')
+        metric4 = self.get_power_metric(p)
+        self.assertEqual(metric4.type_info[0], 'ServantClass')
+
+        p = {'1': 200, '2': 203, '3': 199, '4': 202, '5': 200, '6': 197, '7': 205, '8': 203, '9': 198, '10': 202}
+        metric5 = self.get_power_metric(p)
+
+        print(metric2.type_info)
+        print(metric4.type_info)
+        print(metric1.type_info)
+        print(PowerMetrics.merge([metric2.type_info, metric4.type_info, metric1.type_info]))
 
     @staticmethod
     def generate_hierarchy(agents, number_of_rounds, stability):
@@ -479,6 +536,16 @@ class TestingFindingSocialStructures(unittest.TestCase):
         for i in range(len(combinations)):
             self.assertEqual(12, len(combinations[i]))
 
+    def testing_consistent_social_structures(self):
+
+        groupA = [ (['A', 'D', 'B'], 1, 2), (['F', 'B', 'C', 'E'], 1, 2),  (['A', 'M', 'C'], 1, 2),
+                   (['N', 'O', 'P'], 1, 2)]
+        groupB = [ (['A', 'F', 'B', 'H'], 1, 2), (['F', 'B', 'L', 'E'], 1, 2),  (['A', 'K', 'C'], 1, 2),
+                   (['N', 'R', 'P', 'E'], 1, 2)]
+        groupC = [(['A', 'B', 'D', 'E'], 1, 2), (['A', 'F', 'C'], 1, 2), (['A', 'C', 'K', 'E'], 1, 2)]
+
+        print(SocialAnalysisResult.social_structures_consistency([groupA, groupC, groupA]))
+
     def testing_integration_with_simulation(self):
 
         # Testing you can acquire static agents from runs
@@ -498,13 +565,16 @@ class TestingFindingSocialStructures(unittest.TestCase):
         print("Learning", [(a, type(a)) for a in learning_agents])
 
         # Running simulation with learning agents test
+        results = []
+        for i in range(3):
+            gui_requests, hierarchy, training, social_analysis = RunningSimulation.simulate(static_agents,
+                                                                                            should_display=False,
+                                                                                            should_upload=False,
+                                                                                            should_social_analyse=True)
+            results.append(social_analysis.get_data())
 
-        gui_requests, hierarchy, training, social_analysis = RunningSimulation.simulate(learning_agents,
-                                                                                        should_display=False,
-                                                                                        should_upload=False,
-                                                                                        should_social_analyse=True)
-        print(social_analysis)
-
+        x = SocialAnalysisResult.merge(results)
+        print(x)
 
     @staticmethod
     def generate_full_environment(groups, number_of_agents, number_of_rounds):

@@ -7,7 +7,6 @@ from networkx.algorithms.community.label_propagation import *
 from src.Helper import *
 import difflib
 import statistics
-import functools
 from networkx.algorithms.centrality import *
 
 
@@ -39,34 +38,32 @@ class PowerMetrics:
     @staticmethod
     def merge(type_infos):
         # t -> Strength, Percentage, [Agent Counts]
-        type_to_value = {'None': (0, 0, []),
-                         'Democracy': (0, 0, []),
-                         'Dictatorship': (0, 0, []),
-                         'RulingClass': (0, 0, []),
-                         'ServantClass': (0, 0, []),
-                         'Slavery': (0, 0, [])}
+        type_to_value = {'None': (0, 0, [], 0),
+                         'Democracy': (0, 0, [], 0),
+                         'Dictatorship': (0, 0, [], 0),
+                         'RulingClass': (0, 0, [], 0),
+                         'ServantClass': (0, 0, [], 0),
+                         'Slavery': (0, 0, [], 0)}
 
         for type_info in type_infos:
             if type_info is not None:
                 t, cd, a, s = type_info
-                sp = cd if not None else 0 + s if not None else 0
-                if t == 'Democracy':
-                    sp = (1 - sp)
-                else:
-                    sp /= 4
-
-                ts, tp, ta = type_to_value[t]
-                ts += sp
+                ts, tp, ta, c = type_to_value[t]
+                ts += cd if not None else 0 + s if not None else 0
                 tp += 1
                 ta += [a]
-                type_to_value[t] = (ts, tp, ta)
+                c += 1
+                type_to_value[t] = (ts, tp, ta, c)
 
         for t in type_to_value:
-            s, p, a = type_to_value[t]
+            s, p, a, c = type_to_value[t]
             aidmap = PowerMetrics.get_counts(a)
             p /= len(type_infos)
-            s /= len(type_infos)
-            type_to_value[t] = (a, p, aidmap)
+            s = s / c if c > 0 else s
+
+            type_to_value[t] = (s, p, aidmap)
+
+        return type_to_value
 
     def __repr__(self):
         return str((self.type_info, self.std))
@@ -80,7 +77,7 @@ class PowerMetrics:
         lowest = min(valuesgo)
         d = self.std/lowest
         if d < democracy_thresh:
-            return "Democracy", d, list(self.agent_to_power_distribution.keys()), None
+            return "Democracy", (1 - d), list(self.agent_to_power_distribution.keys()), None
         positives, negatives = [], []
         for agent in self.agent_to_deviation:
             v = self.agent_to_deviation[agent]
@@ -110,10 +107,11 @@ class PowerMetrics:
             # Contender for Servant Class
             p = servant_class_thresh * self.std
             agents = [agent for (agent, v) in negatives if self.agent_to_power_distribution[agent] < (lowest + p)]
+
             if len(agents) == 1:
                 # Slavery
                 slavery_strength = self.agent_to_deviation[agents[0]] / self.std
-                return "Slavery", division_strength, [agents[0]], slavery_strength
+                return "Slavery", division_strength, [agents[0]], abs(slavery_strength)
             return "ServantClass", division_strength, agents, None
 
         closeness_to_distribution = min(0, 1-d, (class_division_thresh - division_strength)/class_division_thresh)
@@ -146,38 +144,33 @@ class PowerStability:
     @staticmethod
     def merge(stability_info_data):
         total_stability_values = []
-        type_to_value = {'None': ([], [], [], []),
-                         'Democracy':([], [], [], []),
-                         'Dictatorship':([], [], [], []),
-                         'RulingClass':([], [], [], []),
-                         'ServantClass':([], [], [], []),
-                         'Slavery':([], [], [], [])}
+        type_to_value = {'None': ([], [], [], 0),
+                         'Democracy':([], [], [], 0),
+                         'Dictatorship':([], [], [], 0),
+                         'RulingClass':([], [], [], 0),
+                         'ServantClass':([], [], [], 0),
+                         'Slavery':([], [], [], 0)}
         for stability_info in stability_info_data:
             if stability_info is None:
                 for t in type_to_value:
                     a, b, c, d = type_to_value[t]
-                    type_to_value[t] = (a + [0], b + [0], c, d + [0])
+                    type_to_value[t] = (a + [0], b + [0], c, d + 0)
                 total_stability_values.append(0)
             else:
                 total, ttv = stability_info
                 total_stability_values.append(total)
                 for t in type_to_value:
                     a1, b1, c1, d1 = ttv[t]
-                    b1 /= d1
-                    if t == 'Democracy':
-                        b1 = 1 - b1
-                    else:
-                        b1 /= 4
+                    b1 = b1/ d1 if d1 > 0 else b1
                     a, b, c, d = type_to_value[t]
-                    type_to_value[t] = (a + [a1], b + [b1], c + [c1], d + [d1])
+                    type_to_value[t] = (a + [a1], b + [b1], c + c1, d + d1)
 
         for t in type_to_value:
             a, b, c, d = type_to_value[t]
             aidmap = PowerMetrics.get_counts(c)
             ams = SocialAnalysis.get_mean_similarity(a)
             bms = SocialAnalysis.get_mean_similarity(b)
-            dms = SocialAnalysis.get_mean_similarity(d)
-            type_to_value[t] = (ams, bms, aidmap, dms)
+            type_to_value[t] = (ams, bms, aidmap, d)
 
         total = SocialAnalysis.get_mean_similarity(total_stability_values)
 
@@ -186,7 +179,7 @@ class PowerStability:
     def stability_information(self):
         if len(self.stability_metrics) == 0:
             return None
-        type_to_info = {'None':(0, 0, [], 0), 'Democracy': (0, 0, [], 0), 'Dictatorship': (0, 0, [], 0),
+        type_to_info = {'None': (0, 0, [], 0), 'Democracy': (0, 0, [], 0), 'Dictatorship': (0, 0, [], 0),
                         'RulingClass': (0, 0, [], 0), 'ServantClass': (0, 0, [], 0), 'Slavery': (0, 0, [], 0)}
         length = self.last_round - self.starting_round
 
@@ -200,7 +193,7 @@ class PowerStability:
                 t, cs, ags, ts = metric.type_info
                 total_stab, type_strength, agents, count = type_to_info[t]
                 total_stab += (n-p)
-                type_strength += (cs if cs is not None else 0) + (ts if ts is not None else 0)
+                type_strength += cs if not None else 0 + ts if not None else 0
                 count += 1
                 if ags is not None:
                     agents.append(ags)
@@ -218,6 +211,7 @@ class PowerStability:
     def __init__(self, round_to_agent_to_power, agents, thresh=0.8, class_division_thresh=1.5, democracy_thresh=0.2,
                  ruling_class_thresh=0.2, servant_class_thresh=0.2):
 
+        self.class_division_thresh = class_division_thresh
         stability = SocialAnalysis.hierarchy_stablity(round_to_agent_to_power, agents, thresh)
         self.starting_round = min(round_to_agent_to_power.keys())
         self.last_round = max(round_to_agent_to_power.keys())
@@ -323,9 +317,45 @@ class SocialAnalysisResult:
     def __repr__(self):
         return str(self.get_data())
 
-    # @staticmethod
-    # def social_structures_consistency(social_structure_data_sets):
-    #     # ([A,B,C], [1,2]), ([B,C,D,[1,2])
+    @staticmethod
+    def similar_structures(group1, group2, sim_thresh=0.8):
+        # Return (g,g2) pairs with sim > 0.8
+        found_groups = []
+        group_found = {}
+        first = group1 if len(group1) > len(group2) else group2
+        second = group2 if first == group1 else group1
+        for g in first:
+            for g2 in second:
+                sim = SocialAnalysis.sim(g, g2)
+                if sim >= sim_thresh:
+                    group_found[str(g)] = group_found[str(g)] + 1 if str(g) in group_found else 1
+                    # similar enough to be near equal
+                    if sim == 1:
+                        found_groups += [g]
+                    else:
+                        found_groups += [g, g2]
+        score = sum(group_found.values()) / len(first) if len(first) > 0 else 0
+        return found_groups, score
+
+    @staticmethod
+    def social_structures_consistency(social_structure_data_sets):
+        # ([A,B,C], [1,2]), ([B,C,D,[1,2])
+        # Find similar groupings identified in each data set
+        groups = [[g[0] for g in group] for group in social_structure_data_sets]
+        avg_similarity = 0
+        c = 0
+        social_structures = []
+
+        for i in range(len(groups)):
+            g = groups[i]
+            for j in range(i+1, len(groups)):
+                g2 = groups[j]
+                found, s = SocialAnalysisResult.similar_structures(g, g2)
+                social_structures += [g for g in found if g not in social_structures]
+                avg_similarity += s
+                c += 1
+        consistency_score = avg_similarity / c if c > 0 else 0
+        return social_structures, consistency_score
 
     @staticmethod
     def merge(data_set):
@@ -334,6 +364,12 @@ class SocialAnalysisResult:
         wealth_stability = []
         power_metrics = []
         atv = {}
+        atg = {}
+        social_structures = []
+        between_average_metrics = [[],[],[],[]]
+        canti, cprod, ccoop, cig = [], [], [], []
+        comp_type_to_count = {'Democracy': 0, 'RulingClass':0, 'ServantClass':0, 'Dictatorship':0, 'Slavery':0, 'None': 0}
+        avg_comp_stability = []
         for data in data_set:
             sm = data["SocialMetrics"]
             a, p, c, i = sm
@@ -345,13 +381,49 @@ class SocialAnalysisResult:
             if ahp is not None:
                 for a in ahp:
                     atv[a] = ahp[a] if a not in atv else ahp[a] + atv[a]
+            social_structures.append(data["SocialStructures"])
+            agroup = data["AgentToGroupCount"]
+            for a in agroup:
+                atg[a] = agroup[a] if a not in atg else atg[a] + agroup[a]
 
+            sgm = data["SocialGroupMetrics"]
+            avgs, rangs = sgm
+            a, p, c, i = 0, 0, 0, 0
+            if avgs is not None:
+                a, p, c, i = avgs
+            al, pl, cl, il = between_average_metrics
+            al, pl, cl, il = al + [a], pl + [p], cl + [c], il + [i]
+            between_average_metrics = [al, pl, cl, il]
 
+            gps = data["GroupPowerStability"]
 
+            if gps is not None:
+                avg_stab, tti = gps
+                avg_comp_stability.append(avg_stab)
+                for t in tti:
+                    comp_type_to_count[t] += 1
+            else:
+                avg_comp_stability.append(0)
 
+            csm = data["CompetingGroupMetrics"]
+            if csm is None:
+                a, p, c, i = 0, 0, 0, 0
+            else:
+                a, p, c, i = csm
+            canti, cprod, ccoop, cig = canti + [a], cprod + [p], ccoop + [c], cig + [i]
 
-
-
+        return {
+            "SocialMetrics": [SocialAnalysis.get_mean_similarity(v) for v in [anti, prod, coop, ig]],
+            "PowerStability": PowerStability.merge(power_stability_info),
+            "WealthStability": SocialAnalysis.get_mean_similarity(wealth_stability),
+            "PowerMetric": PowerMetrics.merge(power_metrics),
+            "AgentToHierarchyPosition": atv,
+            "SocialStructures": SocialAnalysisResult.social_structures_consistency(social_structures),
+            "AgentToGroupCount": atg,
+            "SocialGroupMetrics": [SocialAnalysis.get_mean_similarity(v) for v in between_average_metrics],
+            "GroupPowerStability": [SocialAnalysis.get_mean_similarity(avg_comp_stability), comp_type_to_count],
+            "CompetingGroupMetrics": [SocialAnalysis.get_mean_similarity(v) for v in [canti, cprod, ccoop, cig]]
+        }
 
     def get_data(self):
         g = self.general.general_social_metrics
@@ -474,7 +546,7 @@ class SocialAnalysis:
         if len(values) == 0:
             return None, None
         mean, std = SocialAnalysis.get_mean_range(values)
-        return mean, std/mean if mean > 0 else 1
+        return mean, (1 - std/mean) if mean > 0 else 1
 
     @staticmethod
     def get_mean_range(values):
@@ -498,6 +570,7 @@ class SocialAnalysis:
                 most_stable_hierarchy = atv
             tot += p
         return tot, most_stable_hierarchy
+
 
     @staticmethod
     def get_network(interactions, interaction_to_weight={}, default_weight=1):
@@ -726,13 +799,12 @@ class SocialAnalysis:
 
     @staticmethod
     def hierarchy_stablity(round_to_agent_to_value, agents=None, thresh=0.8):
-
         rounds = sorted(list(round_to_agent_to_value.keys()))
         similarities = []
 
         round_to_hierarchy = {}
-        for i in range(len(rounds)-1):
-            p, n = rounds[i], rounds[i+1]
+        for i in range(len(rounds) - 1):
+            p, n = rounds[i], rounds[i + 1]
 
             if p in round_to_hierarchy:
                 hp = round_to_hierarchy[p]
@@ -757,25 +829,23 @@ class SocialAnalysis:
         # Find consecutive points where sim > 0.8
         consecutive = []
         temp = []
-        count = { }
         for i in range(len(similarities)):
             p, n, s = similarities[i]
             if s > thresh:
                 temp.append(similarities[i])
-                f = round_to_agent_to_value[p]
-
-                count = {agent: count[agent] if agent in count else 0 + f[agent] for agent in f}
 
             if (not (s > thresh) or i == (len(similarities) - 1)) and len(temp) > 0:
                 avg = sum([c[2] for c in temp]) / len(temp)
                 start = temp[0][0]
                 end = temp[len(temp) - 1][1]
-                f = round_to_agent_to_value[n]
-                count = {agent: (count[agent] if agent in count else 0 + f[agent])/(end - start) for agent in f}
-                consecutive.append((start, end, avg, count))
-                count = {agent: 0 for agent in count}
-                temp = []
 
+                count = {}
+                for r in range(start, end+1):
+                    atv = round_to_agent_to_value[r]
+                    count = {a: atv[a] + count[a] if a in count else 0 for a in atv}
+                count = {a: count[a]/(end-start) for a in count}
+                consecutive.append((start, end, avg, count))
+                temp = []
         return consecutive
 
     @staticmethod
@@ -899,7 +969,6 @@ class SocialAnalysis:
         money_added = sum([agent_to_earn[a] for a in agents])
         money_taken = sum([agent_to_mine[a] for a in agents])
         return money_added - money_taken
-
 
     @staticmethod
     def network2():

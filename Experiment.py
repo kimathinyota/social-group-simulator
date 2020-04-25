@@ -120,8 +120,6 @@ class Experiment:
 
         return agent
 
-
-
     @staticmethod
     def unique_colours(n):
         colours = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF", "000000",
