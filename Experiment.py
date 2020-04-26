@@ -469,10 +469,162 @@ class Experiment:
         return False
 
 
+    @staticmethod
+    def set_up_main_results_files(experiment_folder="/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/mainexperimentresults"):
 
+        social_metrics_extra = ",".join([a + " " + b for a in ["Anti-Social", "Productivity",
+                                                                                "Cooperation", "Social-Synergy",
+                                                                                "Wealth-Stability"]
+                                                          for b in ["Mean", "Similarity"]])
+
+
+        power_stability_combo = ",".join([(x + " " + y)
+                                          for y in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                    "Slavery", "None"]
+                                          for x in ["Stability-Mean", "Stability-Similarity", "Total-Count"]])
+
+        power_metric_combo = ",".join([(x + " " + y)
+                                       for y in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                 "Slavery", "None"]
+                                       for x in ["Stability-Mean", "Stability-Similarity"]])
+
+        power_metric_combo = "Overall Stability-Mean, Overall Stability-Similarity, " + power_metric_combo
+
+        power_metric_agent = ",".join([(x + " " + y)
+                                       for y in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                 "Slavery", "None"]
+                                       for x in ["PowerStability", "PowerMetric"]])
+
+        social_structures_title = "Combination, Total, Consistency-Score, Social-Structures"
+        group_power_totals = ",".join(["Total " + a for a in ["Democracy", "Dictatorship", "RulingClass",
+                                                              "ServantClass", "Slavery", "None"]])
+        group_power_totals = "Stability-Mean, Stability-Similarity, " + group_power_totals
+
+        agent_file_header = "Agent, N.O Social Structures, Total Hierarchy Value," + power_metric_agent
+
+        combination_file_names = [("Combination," + social_metrics_extra, "CombinationsSocialMetrics.csv"),
+                                  ("Combination," + power_stability_combo, "CombinationsPowerStability.csv"),
+                                  ("Combination," + power_metric_combo , "CombinationsPowerMetric.csv"),
+                                  (social_structures_title, "CombinationsSocialStructures.csv"),
+                                  ("Combination," + social_metrics_extra, "CombinationsSocialGroupMetrics.csv"),
+                                  ("Combination," + group_power_totals, "CombinationsGroupPowerStability.csv")
+                                  ("Combination," + social_metrics_extra, "CombinationsCompetingGroupMetrics.csv"),
+                                  (agent_file_header, "AgentsAnalysis.csv")]
+
+        for (info, file_name) in combination_file_names:
+            path = experiment_folder + "/" + file_name
+            Experiment.update_file(path, info)
 
     @staticmethod
-    def analyse_main_experiment_results(experiment_directory):
+    def process_and_save_main_results(social_analysis_result_data_sets, agents, experiment_folder):
+
+        agent_to_social_count = {}
+        agent_to_hierarchy_value = {}
+        agent_to_power_type_stab = {}
+        agent_to_power_type_metr = {}
+
+        for a in agents:
+            agent_to_social_count[a] = 0
+            agent_to_hierarchy_value[a] = 0
+            agent_to_power_type_stab[a] = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                          "Slavery", "None"]}
+            agent_to_power_type_metr[a] = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                          "Slavery", "None"]}
+
+        for analysis_data in social_analysis_result_data_sets:
+            combo, data_set, cp = analysis_data
+            data = SocialAnalysisResult.merge(data_set)
+            sm = data["SocialMetrics"]
+            combination = str(sorted(combo))
+            ws = data["WealthStability"]
+            sm_entry = combination + "," + ",".join([str(v) for v in tup for tup in sm]) + "," + str(ws[0]) + "," + str(ws[1])
+            ps = data["PowerStability"]
+            overall, ps = ps
+            ps_entry = ",".join([str(a) for key in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                    "Slavery", "None"]
+                                 for a in [p for i in range(2) for p in ps[key][i]] + [ps[key][3]]])
+
+            for typ in ps:
+                v = ps[typ][2]
+                for a in v:
+                    agent_to_power_type_stab[a][typ] += v[a]
+
+            o1, o2 = overall
+            ps_entry = combination + "," + str(o1) + "," + str(o2) + "," + ps_entry
+
+            pm = data["PowerMetric"]
+            pm_entry = ",".join([str(a) for key in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                    "Slavery", "None"]
+                                 for a in [p for i in range(2) for p in pm[key][i]]])
+
+            for typ in pm:
+                v = pm[typ][2]
+                for a in v:
+                    agent_to_power_type_metr[a][typ] += v[a]
+
+            pm_entry = combination + "," + pm_entry
+
+            sc = data["SocialStructures"]
+            grps, cs = sc
+            sc_entry = combination + "," + len(grps) + "," + cs + "," + str(grps)
+
+            sgm = data["SocialGroupMetrics"]
+            sgm_entry = combination + "," + ",".join([str(v) for v in tup for tup in sgm])
+
+            gps = data["GroupPowerStability"]
+            stab, ttv = gps
+            m, sim = stab
+            gps_entry = str(m) + "," + str(sim) + "," + ",".join([str(ttv[a]) for a in ["Democracy", "Dictatorship",
+                                                                                        "RulingClass", "ServantClass",
+                                                                                        "Slavery","None"]])
+            gps_entry = combination + "," + gps_entry
+
+            cgm = data["CompetingGroupMetrics"]
+            cgm_entry = combination + "," + ",".join([str(v) for v in tup for tup in cgm])
+
+            athp = data["AgentToHierarchyPosition"]
+            for a in athp:
+                agent_to_hierarchy_value[a] += 1
+
+            atgc = data["AgentToGroupCount"]
+            for a in atgc:
+                agent_to_social_count[a] += 1
+
+            info_file_names = [(sm_entry, "CombinationsSocialMetrics.csv"),
+                               (ps_entry, "CombinationsPowerStability.csv"),
+                               (pm_entry, "CombinationsPowerMetric.csv"),
+                               (sc_entry, "CombinationsSocialStructures.csv"),
+                               (sgm_entry, "CombinationsSocialGroupMetrics.csv"),
+                               (gps_entry, "CombinationsGroupPowerStability.csv")
+                               (cgm_entry, "CombinationsCompetingGroupMetrics.csv")]
+
+            for (info, file_name) in info_file_names:
+                path = experiment_folder + "/" + file_name
+                Experiment.update_file(path, info)
+
+            for agent in agents:
+                ttm = agent_to_power_type_metr[agent]
+                tts = agent_to_power_type_stab[agent]
+                hp = agent_to_hierarchy_value[agent]
+                ss = agent_to_social_count[agent]
+
+                power_metric_agent = ",".join([str(x)
+                                               for key in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                           "Slavery", "None"]
+                                               for x in [tts[key], ttm[key]]])
+                a_entry = agent + "," + ss + "," + hp + "," + power_metric_agent
+                path = experiment_folder + "/" + "AgentsAnalysis.csv"
+                Experiment.update_file(path, a_entry)
+
+    @staticmethod
+    def process_main_experiment(results, to_store_data_folder, agents):
+        if len(results) == 0:
+            return None
+        Experiment.set_up_main_results_files(to_store_data_folder)
+        Experiment.process_and_save_main_results(results,agents,to_store_data_folder)
+
+    @staticmethod
+    def process_main_experiment_results(experiment_directory, training_results_folder, static_results_folder):
         config = Experiment.get_json(experiment_directory + "/config.json")
         static_results = Experiment.get_json(experiment_directory + "/static_experiment_results.json")
         training_results = Experiment.get_json(experiment_directory + "/training_experiment_results.json")
@@ -481,7 +633,21 @@ class Experiment:
             return None
 
         combinations, eparams = config
-        number_of_rounds, starting_wealth, minimum_mining_amount, agent_number_per_game = eparams
+        agents = list(set(combinations[0]))
+
+        # Processing Training Experiment
+        Experiment.process_main_experiment(training_results, training_results_folder, agents)
+
+        # Processing Main Experiment
+        Experiment.process_main_experiment(static_results, static_results_folder, agents)
+
+
+
+
+
+
+
+
 
 
 
@@ -1050,6 +1216,7 @@ class Experiment:
     @staticmethod
     def display():
         plt.show()
+
 
     @staticmethod
     def show_experiment_results(agent_variable_directory, interaction_directory, agent_variables_to_display, should_display_interaction_graphs, file_path, show=True):

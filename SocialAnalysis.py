@@ -539,6 +539,7 @@ class SocialAnalysisResult:
             self.competing_social_metrics = [csm.anti_social, csm.productivity, csm.cooperative, csm.introduced_gold]
 
 
+
 class SocialAnalysis:
 
     @staticmethod
