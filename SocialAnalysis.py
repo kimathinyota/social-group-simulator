@@ -345,7 +345,7 @@ class SocialAnalysisResult:
         avg_similarity = 0
         c = 0
         social_structures = []
-
+        all_found = [g[0] for groups in social_structure_data_sets for g in groups]
         for i in range(len(groups)):
             g = groups[i]
             for j in range(i+1, len(groups)):
@@ -355,7 +355,7 @@ class SocialAnalysisResult:
                 avg_similarity += s
                 c += 1
         consistency_score = avg_similarity / c if c > 0 else 0
-        return social_structures, consistency_score
+        return social_structures, consistency_score, all_found
 
     @staticmethod
     def merge(data_set):
@@ -370,6 +370,7 @@ class SocialAnalysisResult:
         canti, cprod, ccoop, cig = [], [], [], []
         comp_type_to_count = {'Democracy': 0, 'RulingClass':0, 'ServantClass':0, 'Dictatorship':0, 'Slavery':0, 'None': 0}
         avg_comp_stability = []
+
         for data in data_set:
             sm = data["SocialMetrics"]
             a, p, c, i = sm

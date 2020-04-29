@@ -550,31 +550,39 @@ class TestingFindingSocialStructures(unittest.TestCase):
 
         # Testing you can acquire static agents from runs
 
-        combinations = Experiment.spread_out_combinations(1)
-
-        current_position = 0
-        run = combinations[current_position]
-        agentIDs = [(belbin + "*" + mine + appr) for (belbin, mine, appr) in run]
-        print("AIDS", agentIDs)
-        training_directory = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training"
-
-        static_agents = Experiment.get_training_agents(training_directory, [], agentIDs)[0]
-        print("Static", [(a, type(a)) for a in static_agents])
-
-        learning_agents = Experiment.get_training_agents(training_directory, agentIDs, [])[0]
-        print("Learning", [(a, type(a)) for a in learning_agents])
-
-        # Running simulation with learning agents test
-        results = []
+        combinations = Experiment.spread_out_combinations(3)
+        complete = []
         for i in range(3):
-            gui_requests, hierarchy, training, social_analysis = RunningSimulation.simulate(static_agents,
-                                                                                            should_display=False,
-                                                                                            should_upload=False,
-                                                                                            should_social_analyse=True)
-            results.append(social_analysis.get_data())
+            current_position = i
+            run = combinations[current_position]
+            agentIDs = [(belbin + "*" + mine + appr) for (belbin, mine, appr) in run]
+            print("AIDS", agentIDs)
+            training_directory = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training"
 
-        x = SocialAnalysisResult.merge(results)
-        print(x)
+            static_agents = Experiment.get_training_agents(training_directory, [], agentIDs)[0]
+            print("Static", [(a, type(a)) for a in static_agents])
+
+            # learning_agents = Experiment.get_training_agents(training_directory, agentIDs, [])[0]
+            # print("Learning", [(a, type(a)) for a in learning_agents])
+
+            agents = [agent.generation_id for agent in static_agents]
+            # Running simulation with learning agents test
+            results = []
+
+            for i in range(3):
+                gui_requests, hierarchy, training, social_analysis = RunningSimulation.simulate(static_agents,
+                                                                                                should_display=False,
+                                                                                                should_upload=False,
+                                                                                                should_social_analyse=True)
+                results.append(social_analysis.get_data())
+
+            complete.append((results, agents, i))
+
+        experiment_folder = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/testexperiment"
+        with open(experiment_folder + "/test_results.json", 'w') as fp:
+            json.dump(complete, fp)
+
+        # testing experiment:
 
     @staticmethod
     def generate_full_environment(groups, number_of_agents, number_of_rounds):
@@ -585,6 +593,13 @@ class TestingFindingSocialStructures(unittest.TestCase):
 
 
 
+    def test_experiment(self):
+        f = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/testexperiment"
+        e = f + "/test_results.json"
+        results = Experiment.get_json(e)
+
+        r, agents, i = results[0]
+        Experiment.process_main_experiment(results, f + "/results")
 
 
 

@@ -195,7 +195,6 @@ class Experiment:
             plt.show()
         return x_to_correlation
 
-
     @staticmethod
     def get_correlation_data(X, Y):
         r, pr = scipy.stats.pearsonr(X, Y)
@@ -204,7 +203,6 @@ class Experiment:
         rs, r = round(rs, rnd), round(r, rnd)
         ps, pr = round(ps, rnd), round(pr, rnd)
         return r, rs, ps, pr
-
 
     @staticmethod
     def plot_2d(X, Y, xlabel="X", ylabel="Y", show=True, should_draw=True):
@@ -468,160 +466,257 @@ class Experiment:
                 return True
         return False
 
-
     @staticmethod
-    def set_up_main_results_files(experiment_folder="/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/mainexperimentresults"):
+    def set_up_main_results_files(experiment_folder):
 
         social_metrics_extra = ",".join([a + " " + b for a in ["Anti-Social", "Productivity",
                                                                                 "Cooperation", "Social-Synergy",
                                                                                 "Wealth-Stability"]
                                                           for b in ["Mean", "Similarity"]])
 
-
         power_stability_combo = ",".join([(x + " " + y)
                                           for y in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
                                                     "Slavery", "None"]
-                                          for x in ["Stability-Mean", "Stability-Similarity", "Total-Count"]])
-
+                                          for x in ["Stability-Mean", "Stability-Similarity",
+                                                    "Strength-Mean", "Strength-Similarity",
+                                                    "Total-Count"]])
+        power_stability_combo = "Overall Stability-Mean, Overall Stability-Similarity, " + power_stability_combo
         power_metric_combo = ",".join([(x + " " + y)
                                        for y in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
                                                  "Slavery", "None"]
-                                       for x in ["Stability-Mean", "Stability-Similarity"]])
-
-        power_metric_combo = "Overall Stability-Mean, Overall Stability-Similarity, " + power_metric_combo
+                                       for x in ["Stability Percentage (AVG)", "Strength (AVG)"]])
 
         power_metric_agent = ",".join([(x + " " + y)
                                        for y in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
                                                  "Slavery", "None"]
                                        for x in ["PowerStability", "PowerMetric"]])
 
-        social_structures_title = "Combination, Total, Consistency-Score, Social-Structures"
+        social_structures_title = "Combination, Total Consistent, Consistency-Score, Total Found, Consistent Social-Structures, All Social Structures"
         group_power_totals = ",".join(["Total " + a for a in ["Democracy", "Dictatorship", "RulingClass",
                                                               "ServantClass", "Slavery", "None"]])
         group_power_totals = "Stability-Mean, Stability-Similarity, " + group_power_totals
 
-        agent_file_header = "Agent, N.O Social Structures, Total Hierarchy Value," + power_metric_agent
+        agent_file_header = "Agent, N.O. Combinations, Total Social Structures, " \
+                            "Total Hierarchy Value," + power_metric_agent
+
+        agent_file2_header = "Agent, N.O. Combinations, Total Consistent Groups, Total Consistent Score, Total Groups Found," \
+                             + social_metrics_extra + ",Power Stability Mean, Power Stability Similarity "
 
         combination_file_names = [("Combination," + social_metrics_extra, "CombinationsSocialMetrics.csv"),
                                   ("Combination," + power_stability_combo, "CombinationsPowerStability.csv"),
                                   ("Combination," + power_metric_combo , "CombinationsPowerMetric.csv"),
                                   (social_structures_title, "CombinationsSocialStructures.csv"),
                                   ("Combination," + social_metrics_extra, "CombinationsSocialGroupMetrics.csv"),
-                                  ("Combination," + group_power_totals, "CombinationsGroupPowerStability.csv")
+                                  ("Combination," + group_power_totals, "CombinationsGroupPowerStability.csv"),
                                   ("Combination," + social_metrics_extra, "CombinationsCompetingGroupMetrics.csv"),
-                                  (agent_file_header, "AgentsAnalysis.csv")]
+                                  (agent_file_header, "AgentsAnalysis.csv"),
+                                  (agent_file2_header, "AgentsAnalysis2.csv")]
 
         for (info, file_name) in combination_file_names:
             path = experiment_folder + "/" + file_name
-            Experiment.update_file(path, info)
+            if os.path.exists(path):
+                os.remove(path)
+            Experiment.update_file(path, info + "\n")
 
     @staticmethod
-    def process_and_save_main_results(social_analysis_result_data_sets, agents, experiment_folder):
+    def list_csv_entry(lst):
+        return "[" + " ".join(lst) + "]"
+
+    @staticmethod
+    def social_group_csv_entry(list_of_groups):
+        str_lst = [Experiment.list_csv_entry(lst) for lst in list_of_groups]
+        return Experiment.list_csv_entry(str_lst)
+
+    @staticmethod
+    def process_and_save_main_results(social_analysis_result_data_sets, experiment_folder):
 
         agent_to_social_count = {}
         agent_to_hierarchy_value = {}
         agent_to_power_type_stab = {}
         agent_to_power_type_metr = {}
-
-        for a in agents:
-            agent_to_social_count[a] = 0
-            agent_to_hierarchy_value[a] = 0
-            agent_to_power_type_stab[a] = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
-                                                          "Slavery", "None"]}
-            agent_to_power_type_metr[a] = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
-                                                          "Slavery", "None"]}
+        agent_to_average_social_metric = {}
+        agent_to_power_stability = {}
+        agent_to_wealth_stability = {}
+        agent_to_social_structure_info = {}
+        agent_to_count = {}
+        agents = []
 
         for analysis_data in social_analysis_result_data_sets:
-            combo, data_set, cp = analysis_data
+            data_set, combo, cp = analysis_data
+            agents = list(set(agents + combo))
             data = SocialAnalysisResult.merge(data_set)
             sm = data["SocialMetrics"]
-            combination = str(sorted(combo))
+            combination = " ".join(sorted(combo))
             ws = data["WealthStability"]
-            sm_entry = combination + "," + ",".join([str(v) for v in tup for tup in sm]) + "," + str(ws[0]) + "," + str(ws[1])
+
+            sm_entry = combination + "," + ",".join([str(v) for tup in sm for v in tup]) + "," + str(ws[0]) + "," + str(ws[1])
             ps = data["PowerStability"]
             overall, ps = ps
             ps_entry = ",".join([str(a) for key in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
                                                     "Slavery", "None"]
                                  for a in [p for i in range(2) for p in ps[key][i]] + [ps[key][3]]])
 
+            o1, o2 = overall
+            ps_entry = combination + "," + str(o1) + "," + str(o2) + "," + ps_entry
             for typ in ps:
                 v = ps[typ][2]
                 for a in v:
-                    agent_to_power_type_stab[a][typ] += v[a]
-
-            o1, o2 = overall
-            ps_entry = combination + "," + str(o1) + "," + str(o2) + "," + ps_entry
+                    res = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass",
+                                          "ServantClass", "Slavery", "None"]}
+                    if a in agent_to_power_type_stab:
+                        res = agent_to_power_type_stab[a]
+                    res[typ] += v[a]
+                    agent_to_power_type_stab[a] = res
 
             pm = data["PowerMetric"]
             pm_entry = ",".join([str(a) for key in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
                                                     "Slavery", "None"]
-                                 for a in [p for i in range(2) for p in pm[key][i]]])
+                                 for a in [pm[key][i] for i in range(2)]])
 
             for typ in pm:
                 v = pm[typ][2]
                 for a in v:
-                    agent_to_power_type_metr[a][typ] += v[a]
+                    res = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass",
+                                          "ServantClass", "Slavery", "None"]}
+                    if a in agent_to_power_type_metr:
+                        res = agent_to_power_type_metr[a]
+                    res[typ] += v[a]
+                    agent_to_power_type_metr[a] = res
 
             pm_entry = combination + "," + pm_entry
 
             sc = data["SocialStructures"]
-            grps, cs = sc
-            sc_entry = combination + "," + len(grps) + "," + cs + "," + str(grps)
+            cons_groups, conist_score, all_groups = sc
+
+            str_grps = Experiment.social_group_csv_entry(cons_groups)
+            str_af = Experiment.social_group_csv_entry(all_groups)
+
+            sc_entry = combination + "," + str(len(cons_groups)) + "," + str(conist_score) + "," + str(len(all_groups)) \
+                       + "," + str_grps + "," + str_af
 
             sgm = data["SocialGroupMetrics"]
-            sgm_entry = combination + "," + ",".join([str(v) for v in tup for tup in sgm])
+            sgm_entry = combination + "," + ",".join([str(v) for tup in sgm for v in tup])
 
             gps = data["GroupPowerStability"]
             stab, ttv = gps
             m, sim = stab
             gps_entry = str(m) + "," + str(sim) + "," + ",".join([str(ttv[a]) for a in ["Democracy", "Dictatorship",
                                                                                         "RulingClass", "ServantClass",
-                                                                                        "Slavery","None"]])
+                                                                                        "Slavery", "None"]])
             gps_entry = combination + "," + gps_entry
 
             cgm = data["CompetingGroupMetrics"]
-            cgm_entry = combination + "," + ",".join([str(v) for v in tup for tup in cgm])
+            cgm_entry = combination + "," + ",".join([str(v) for tup in cgm for v in tup])
 
             athp = data["AgentToHierarchyPosition"]
             for a in athp:
-                agent_to_hierarchy_value[a] += 1
+                agent_to_hierarchy_value[a] = athp[a] if a not in agent_to_hierarchy_value else athp[a] + agent_to_hierarchy_value[a]
 
             atgc = data["AgentToGroupCount"]
             for a in atgc:
-                agent_to_social_count[a] += 1
+                agent_to_social_count[a] = atgc[a] if a not in agent_to_social_count else atgc[a] + agent_to_social_count[a]
 
             info_file_names = [(sm_entry, "CombinationsSocialMetrics.csv"),
                                (ps_entry, "CombinationsPowerStability.csv"),
                                (pm_entry, "CombinationsPowerMetric.csv"),
                                (sc_entry, "CombinationsSocialStructures.csv"),
                                (sgm_entry, "CombinationsSocialGroupMetrics.csv"),
-                               (gps_entry, "CombinationsGroupPowerStability.csv")
+                               (gps_entry, "CombinationsGroupPowerStability.csv"),
                                (cgm_entry, "CombinationsCompetingGroupMetrics.csv")]
+
+            for agent in combo:
+                res = [ ([],[]), ([],[]), ([],[]), ([],[])]
+                if agent in agent_to_average_social_metric:
+                    res = agent_to_average_social_metric[agent]
+                for i in range(4):
+                    m, s = sm[i]
+                    m1, s1 = res[i]
+                    res[i] = (m1 + [m], s1 + [s])
+                agent_to_average_social_metric[agent] = res
+                aps = ([], [])
+                if agent in agent_to_power_stability:
+                    aps = agent_to_power_stability[agent]
+                m, s = overall
+                m1, s1 = aps
+                aps = (m1 + [m], s1 + [s])
+                agent_to_power_stability[agent] = aps
+                aws = ([], [])
+                if agent in agent_to_wealth_stability:
+                    aws = agent_to_wealth_stability[agent]
+                m, s = ws
+                m1, s1 = aws
+                aws = (m1 + [m], s1 + [s])
+                agent_to_wealth_stability[agent] = aws
+
+                entry = (0, 0, 0)
+                if agent in agent_to_social_structure_info:
+                    entry = agent_to_social_structure_info[agent]
+                entry = (entry[0] + len(cons_groups), entry[1] + conist_score, entry[2] + len(all_groups))
+                agent_to_social_structure_info[agent] = entry
+
+                agent_to_count[agent] = agent_to_count[agent] + 1 if agent in agent_to_count else 1
 
             for (info, file_name) in info_file_names:
                 path = experiment_folder + "/" + file_name
-                Experiment.update_file(path, info)
+                Experiment.update_file(path, info + "\n")
 
-            for agent in agents:
+        for agent in agents:
+            ttm = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass", "ServantClass", "Slavery", "None"]}
+            if agent in agent_to_power_type_metr:
                 ttm = agent_to_power_type_metr[agent]
+            tts = {t: 0 for t in ["Democracy", "Dictatorship", "RulingClass", "ServantClass", "Slavery", "None"]}
+            if agent in agent_to_power_type_stab:
                 tts = agent_to_power_type_stab[agent]
-                hp = agent_to_hierarchy_value[agent]
-                ss = agent_to_social_count[agent]
+            hp = agent_to_hierarchy_value[agent] if agent in agent_to_hierarchy_value else 0
+            ss = agent_to_social_count[agent] if agent in agent_to_social_count else 0
 
-                power_metric_agent = ",".join([str(x)
-                                               for key in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
-                                                           "Slavery", "None"]
-                                               for x in [tts[key], ttm[key]]])
-                a_entry = agent + "," + ss + "," + hp + "," + power_metric_agent
-                path = experiment_folder + "/" + "AgentsAnalysis.csv"
-                Experiment.update_file(path, a_entry)
+            powstab, wealthstab = (0, 1), (0, 1)
+            if agent in agent_to_power_stability:
+                a, b = agent_to_power_stability[agent]
+                if len(a) >= 2 and len(b) >= 2:
+                    powstab = (SocialAnalysis.get_mean_similarity(a)[0], SocialAnalysis.get_mean_similarity(b)[0])
+
+            if agent in agent_to_wealth_stability:
+                a, b = agent_to_wealth_stability[agent]
+                if len(a) >= 2 and len(b) >= 2:
+                    wealthstab = (SocialAnalysis.get_mean_similarity(a)[0], SocialAnalysis.get_mean_similarity(b)[0])
+
+            avsm = [(0, 1), (0, 1), (0, 1), (0, 1)]
+            if agent in agent_to_average_social_metric:
+                vs = agent_to_average_social_metric[agent]
+                avsm = []
+
+                for a, b in vs:
+                    if len(a) >= 2 and len(b) >= 2:
+                        a, b = (SocialAnalysis.get_mean_similarity(a)[0], SocialAnalysis.get_mean_similarity(b)[0])
+                    else:
+                        a, b = 0, 1
+                    avsm.append((a,b))
+            count = agent_to_count[agent]
+            ss_info = agent_to_social_structure_info[agent] if agent in agent_to_social_structure_info else (0, 0, 0)
+
+            ss_entry = ",".join([str(t/count) for t in ss_info])
+
+            info2 = agent + "," + str(count) + "," + ss_entry + "," + ",".join([str(v) for tup in avsm + [wealthstab, powstab] for v in tup])
+
+            power_metric_agent = ",".join([str(x/count)
+                                           for key in ["Democracy", "Dictatorship", "RulingClass", "ServantClass",
+                                                       "Slavery", "None"]
+                                           for x in [tts[key], ttm[key]]])
+
+            a_entry = agent + "," + str(count) + "," + str(ss/count) + "," + str(hp/count) + "," + power_metric_agent
+            path = experiment_folder + "/" + "AgentsAnalysis.csv"
+            Experiment.update_file(path, a_entry + "\n")
+            path2 = experiment_folder + "/" + "AgentsAnalysis2.csv"
+            Experiment.update_file(path2, info2 + "\n")
 
     @staticmethod
-    def process_main_experiment(results, to_store_data_folder, agents):
+    def process_main_experiment(results, to_store_data_folder):
         if len(results) == 0:
             return None
         Experiment.set_up_main_results_files(to_store_data_folder)
-        Experiment.process_and_save_main_results(results,agents,to_store_data_folder)
+        Experiment.process_and_save_main_results(results,
+                                                 to_store_data_folder)
 
     @staticmethod
     def process_main_experiment_results(experiment_directory, training_results_folder, static_results_folder):
@@ -633,25 +728,12 @@ class Experiment:
             return None
 
         combinations, eparams = config
-        agents = list(set(combinations[0]))
 
         # Processing Training Experiment
-        Experiment.process_main_experiment(training_results, training_results_folder, agents)
+        Experiment.process_main_experiment(training_results, training_results_folder)
 
         # Processing Main Experiment
-        Experiment.process_main_experiment(static_results, static_results_folder, agents)
-
-
-
-
-
-
-
-
-
-
-
-
+        Experiment.process_main_experiment(static_results, static_results_folder)
 
     @staticmethod
     def spread_out_combinations(number):
@@ -766,16 +848,14 @@ class Experiment:
         return agdict, mdict, adict
 
     @staticmethod
-    def set_up_main_experiment(experiment_directory, number_of_different_combinations, starting_wealth=10000,
-                               minimum_mining_amount=10, number_of_rounds=40, agent_number_per_game=12):
+    def set_up_main_experiment_combos(experiment_directory, combinations, starting_wealth=10000,
+                                      minimum_mining_amount=10, number_of_rounds=40, agent_number_per_game=12):
         # Config: ([Runs], eparams)
         eparams = (number_of_rounds, starting_wealth, minimum_mining_amount, agent_number_per_game)
-        combinations = Experiment.spread_out_combinations(number_of_different_combinations)
         a1, a2, a3 = Experiment.count(combinations)
         print("Agents", a1)
         print("MDict", a2)
         print("ADict", a3)
-
         config = (combinations, eparams)
 
         with open(experiment_directory + "/config.json", 'w') as fp:
@@ -788,6 +868,13 @@ class Experiment:
             json.dump(static_experiment_results, fp)
         with open(experiment_directory + "/training_experiment_results.json", 'w') as fp:
             json.dump(training_experiment_results, fp)
+
+    @staticmethod
+    def set_up_main_experiment(experiment_directory, number_of_different_combinations, starting_wealth=10000,
+                               minimum_mining_amount=10, number_of_rounds=40, agent_number_per_game=12):
+        combinations = Experiment.spread_out_combinations(number_of_different_combinations)
+        Experiment.set_up_main_experiment_combos(experiment_directory, combinations, starting_wealth,
+                                                 minimum_mining_amount, number_of_rounds, agent_number_per_game)
 
     @staticmethod
     def resume_main_experiment(experiment_directory, training_directory):
@@ -833,7 +920,7 @@ class Experiment:
                                                                                                        True)
                         results.append(socialAnalysis.get_data())
 
-                    entry = (results, run, current_position)
+                    entry = (results, agentIDs, current_position)
 
                     if is_training_experiment:
                         training_results.append(entry)
@@ -853,34 +940,6 @@ class Experiment:
                     print("Training" if is_training_experiment else "Static", "Experiment", "Run", current_position,
                           "Something went wrong - this run failed")
             print("Finished", "Training" if is_training_experiment else "Static", "Experiment")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     @staticmethod
     def run_x_vs_earned_experiment(agent_var,total_number_of_agents, directory, starting=1, ending=9, number_of_repeats=3, number_of_rounds=40, starting_wealth=10000,
@@ -1171,7 +1230,6 @@ class Experiment:
             plt.show()
         return csv_string
 
-
     @staticmethod
     def construct_line(variable1, variable2, r, pr, rs, ps):
         line = variable1 + "," + variable2 + "," + str(rs) + "," + str(ps) + "," + str(r) + "," + str(pr)
@@ -1216,7 +1274,6 @@ class Experiment:
     @staticmethod
     def display():
         plt.show()
-
 
     @staticmethod
     def show_experiment_results(agent_variable_directory, interaction_directory, agent_variables_to_display, should_display_interaction_graphs, file_path, show=True):

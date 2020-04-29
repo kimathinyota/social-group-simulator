@@ -287,7 +287,6 @@ class LearningAgent(Agent):
 
         for agent in agents:
             actions = actionsm[agent]
-
             if len(actions) > 0:
                 default_probs = [i_to_weight[interactions[agent][action]] for action in actions]
                 # print(actions)
