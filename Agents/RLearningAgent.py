@@ -1,5 +1,5 @@
 import src.Helper as Helper
-from src.Agent import Agent
+from src.Agents.Agent import Agent
 import numpy as np
 import random
 import time

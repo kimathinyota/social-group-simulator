@@ -1,18 +1,13 @@
-from src.Agent import *
-from src.LearningAgent import *
-from src.DisplayServer import *
-from src.GoldMiningEnvironment import *
-import threading
-import matplotlib.pyplot as plt
+from src.Agents.LearningAgent import *
 from numpy.polynomial.polynomial import polyfit
-import numpy as np
 import scipy.stats
 import json
 import csv
-import collections
-from src.SocialAnalysis import *
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.cm as cm
+from src.DataAnalysis import *
+from src.SocialAnalysis.SocialAnalysis import *
+from src.Display import SocialGroupGUI
+from src.Helper import *
+import os
 
 
 class RunningSimulation:
@@ -38,10 +33,12 @@ class RunningSimulation:
         return environment.run()
 
     @staticmethod
-    def display_gui(gui_requests):
+    def display_gui(gui_requests, display_pause = None):
         gui = SocialGroupGUI(1400, 800)
         for request in gui_requests:
             ServiceGUI.process_request(gui, request)
+            if display_pause is not None:
+                gui.display(display_pause, 30)
 
     @staticmethod
     def upload_to_database(analysis):
@@ -51,7 +48,7 @@ class RunningSimulation:
     @staticmethod
     def simulate(agents, should_display, number_of_rounds=40, should_upload=True, should_test=False,
                  starting_wealth=10000, minimum_mining_amount=10, should_social_analyse=False,
-                 training_save_location="/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training/training.json"):
+                 training_save_location="/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training/training.json", display_pause=None):
         environment = ResourceMiningEnvironment(starting_wealth,minimum_mining_amount,number_of_rounds,should_test)
         gui_requests, analysis, hierarchy, training, rinteracts, ram = RunningSimulation.run_environment(environment,agents)
 
@@ -59,7 +56,7 @@ class RunningSimulation:
             RunningSimulation.upload_to_database(analysis)
 
         if should_display:
-            RunningSimulation.display_gui(gui_requests)
+            RunningSimulation.display_gui(gui_requests, display_pause)
 
         social_analysis = False
         if should_social_analyse:
@@ -263,7 +260,7 @@ class Experiment:
     #           environment-params(number_of_rounds, starting-wealth,
     #                               minimum_mining_amount, number_of_agents)}
     @staticmethod
-    def set_up_training_file(training_directory, q_array_sizes=[10, 10, 8, 5, 9], discount=0.85, gamma=0.9, alpha=0.4,
+    def set_up_training_file(training_directory, q_array_sizes=[10, 10, 8, 5, 9], discount=0.85, gamma=0.9, alpha=0.9,
                              starting_wealth=10000, minimum_mining_amount=10, number_of_rounds=40,
                              number_trained_per_game=6, long_term_reward=5, agent_number_per_game=12):
         ri = [(['X'],70), (['C'],30), (['X4', 'O2', 'X3'],80), (['C1', 'C4'],20)]
@@ -335,7 +332,11 @@ class Experiment:
         agents = []
         tparams, eparams, torder = config
         d, g, a, qs, npg, ltr = tparams
+        id_to_count = {}
         for id in learningAgentIDs:
+            id_to_count[id] = 1 + id_to_count[id] if id in id_to_count else 1
+            count = id_to_count[id]
+            id_str = id + "*" + str(count) if count > 1 else id
             Q = np.array(training_data[id])
             name, competency, personality = agent_info[id]
             m, a = competency
@@ -343,6 +344,9 @@ class Experiment:
             agents.append(agent)
 
         for id in staticAgentIDs:
+            id_to_count[id] = 1 + id_to_count[id] if id in id_to_count else 1
+            count = id_to_count[id]
+            id_str = id + "*" + str(count) if count > 1 else id
             name, competency, personality = agent_info[id]
             m, a = competency
             agent = Agent(name, Competency(m,a), personality, id)
@@ -459,19 +463,10 @@ class Experiment:
             print("Success count: ", success, " Failure count: ", failures)
 
     @staticmethod
-    def contains(lists_of_lists, list):
-        counter = collections.Counter(list)
-        for a in lists_of_lists:
-            if collections.Counter(a) == counter:
-                return True
-        return False
-
-    @staticmethod
     def set_up_main_results_files(experiment_folder):
 
-        social_metrics_extra = ",".join([a + " " + b for a in ["Anti-Social", "Productivity",
-                                                                                "Cooperation", "Social-Synergy",
-                                                                                "Wealth-Stability"]
+        social_metrics_extra = ",".join([a + " " + b for a in ["Anti-Social", "Productivity", "Cooperation",
+                                                               "Friendliness", "Social-Synergy", "Wealth-Stability"]
                                                           for b in ["Mean", "Similarity"]])
 
         power_stability_combo = ",".join([(x + " " + y)
@@ -528,6 +523,11 @@ class Experiment:
         return Experiment.list_csv_entry(str_lst)
 
     @staticmethod
+    def social_group_map_csv_entry(group_to_score):
+        lst = [ Experiment.list_csv_entry(g) + ":" + str(group_to_score[g]) for g in group_to_score]
+        return Experiment.list_csv_entry(lst)
+
+    @staticmethod
     def process_and_save_main_results(social_analysis_result_data_sets, experiment_folder):
 
         agent_to_social_count = {}
@@ -543,7 +543,7 @@ class Experiment:
 
         for analysis_data in social_analysis_result_data_sets:
             data_set, combo, cp = analysis_data
-            agents = list(set(agents + combo))
+
             data = SocialAnalysisResult.merge(data_set)
             sm = data["SocialMetrics"]
             combination = " ".join(sorted(combo))
@@ -588,8 +588,8 @@ class Experiment:
             sc = data["SocialStructures"]
             cons_groups, conist_score, all_groups = sc
 
-            str_grps = Experiment.social_group_csv_entry(cons_groups)
-            str_af = Experiment.social_group_csv_entry(all_groups)
+            str_grps = Experiment.social_group_map_csv_entry(cons_groups)
+            str_af = Experiment.social_group_map_csv_entry(all_groups)
 
             sc_entry = combination + "," + str(len(cons_groups)) + "," + str(conist_score) + "," + str(len(all_groups)) \
                        + "," + str_grps + "," + str_af
@@ -609,12 +609,16 @@ class Experiment:
             cgm_entry = combination + "," + ",".join([str(v) for tup in cgm for v in tup])
 
             athp = data["AgentToHierarchyPosition"]
+
             for a in athp:
                 agent_to_hierarchy_value[a] = athp[a] if a not in agent_to_hierarchy_value else athp[a] + agent_to_hierarchy_value[a]
 
+            combo = list(set(athp.keys()))
             atgc = data["AgentToGroupCount"]
             for a in atgc:
                 agent_to_social_count[a] = atgc[a] if a not in agent_to_social_count else atgc[a] + agent_to_social_count[a]
+
+            combo = list(set(combo + list(atgc.keys())))
 
             info_file_names = [(sm_entry, "CombinationsSocialMetrics.csv"),
                                (ps_entry, "CombinationsPowerStability.csv"),
@@ -624,11 +628,12 @@ class Experiment:
                                (gps_entry, "CombinationsGroupPowerStability.csv"),
                                (cgm_entry, "CombinationsCompetingGroupMetrics.csv")]
 
+            agents = list(set(agents + combo))
             for agent in combo:
-                res = [ ([],[]), ([],[]), ([],[]), ([],[])]
+                res = [ ([],[]), ([],[]), ([],[]), ([],[]), ([],[])]
                 if agent in agent_to_average_social_metric:
                     res = agent_to_average_social_metric[agent]
-                for i in range(4):
+                for i in range(5):
                     m, s = sm[i]
                     m1, s1 = res[i]
                     res[i] = (m1 + [m], s1 + [s])
@@ -719,7 +724,8 @@ class Experiment:
                                                  to_store_data_folder)
 
     @staticmethod
-    def process_main_experiment_results(experiment_directory, training_results_folder, static_results_folder):
+    def process_main_experiment_results(experiment_directory, training_results_folder, static_results_folder,
+                                        should_static=True, should_train=True):
         config = Experiment.get_json(experiment_directory + "/config.json")
         static_results = Experiment.get_json(experiment_directory + "/static_experiment_results.json")
         training_results = Experiment.get_json(experiment_directory + "/training_experiment_results.json")
@@ -730,10 +736,12 @@ class Experiment:
         combinations, eparams = config
 
         # Processing Training Experiment
-        Experiment.process_main_experiment(training_results, training_results_folder)
+        if should_train:
+            Experiment.process_main_experiment(training_results, training_results_folder)
 
         # Processing Main Experiment
-        Experiment.process_main_experiment(static_results, static_results_folder)
+        if should_static:
+            Experiment.process_main_experiment(static_results, static_results_folder)
 
     @staticmethod
     def spread_out_combinations(number):
@@ -828,7 +836,7 @@ class Experiment:
             #print("Agents", agents)
 
 
-            if not Experiment.contains(runs, agents):
+            if not contains(runs, agents):
                 runs.append(agents)
 
         return runs
@@ -877,7 +885,9 @@ class Experiment:
                                                  minimum_mining_amount, number_of_rounds, agent_number_per_game)
 
     @staticmethod
-    def resume_main_experiment(experiment_directory, training_directory):
+    def resume_main_experiment(experiment_directory, training_directory, should_static=True, should_training=True):
+        if not (should_static or should_training):
+            return None
         config = Experiment.get_json(experiment_directory + "/config.json")
         static_results = Experiment.get_json(experiment_directory + "/static_experiment_results.json")
         training_results = Experiment.get_json(experiment_directory + "/training_experiment_results.json")
@@ -892,7 +902,13 @@ class Experiment:
 
         # For Experiment with trained agents:
 
-        for is_training_experiment in [True, False]:
+        bools = [True, False]
+        if not should_training:
+            bools.remove(True)
+        if not should_static:
+            bools.remove(False)
+
+        for is_training_experiment in bools:
             if is_training_experiment:
                 current_position = 0 if len(training_results) == 0 else training_results[len(training_results) - 1][2] + 1
             else:
@@ -904,13 +920,17 @@ class Experiment:
                     run = combinations[current_position]
                     agentIDs = [(belbin + "*" + mine + appr) for (belbin, mine, appr) in run]
 
-                    if is_training_experiment:
-                        agents = Experiment.get_training_agents(training_directory, agentIDs, [])[0]
-                    else:
-                        agents = Experiment.get_training_agents(training_directory, [], agentIDs)[0]
-
                     results = []
+
+                    agent_gids = []
                     for i in range(3):
+                        if is_training_experiment:
+                            agents = Experiment.get_training_agents(training_directory, agentIDs, [])[0]
+
+                        else:
+                            agents = Experiment.get_training_agents(training_directory, [], agentIDs)[0]
+
+                        agent_gids = list(set(agent_gids + [a.generation_id for a in agents]))
                         print("Running simulations ", str(i + 1) + "/3")
                         gui_requests, hierarchy, training, socialAnalysis = RunningSimulation.simulate(agents, False,
                                                                                                        number_of_rounds,
@@ -920,7 +940,7 @@ class Experiment:
                                                                                                        True)
                         results.append(socialAnalysis.get_data())
 
-                    entry = (results, agentIDs, current_position)
+                    entry = (results, agent_gids, current_position)
 
                     if is_training_experiment:
                         training_results.append(entry)

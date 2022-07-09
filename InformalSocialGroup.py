@@ -1,5 +1,6 @@
-from src.ServiceGUI import *
+from src.Display.ServiceGUI import *
 import threading
+
 
 class SocialGroup:
 

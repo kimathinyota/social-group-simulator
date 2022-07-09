@@ -1,10 +1,8 @@
-import unittest
-from src.Agent import *
-from src.SocialAnalysis import *
 from src.Experiment import *
+import unittest
 
 
-class TestingFindingSocialStructures(unittest.TestCase):
+class TestingDetectionSoftware(unittest.TestCase):
 
     @staticmethod
     def generate_round(interactions, atw, aids, mining_range, f_range, m_range, h_range, t_range):
@@ -62,8 +60,8 @@ class TestingFindingSocialStructures(unittest.TestCase):
                         Friendship(a[10], a[13], None), Friendship(a[10], a[12], None), Friendship(a[12], a[11], None),
                         Friendship(a[11], a[13], None), Help(a[10], a[11], None), Mentorship(a[13], a[12], None)]
 
-        ite, atm, atw = TestingFindingSocialStructures.generate_round(interactions, atw, list(gid.keys()), (100, 150),
-                                                                      (10, 20), (10, 20), (10, 20), (10, 20))
+        ite, atm, atw = TestingDetectionSoftware.generate_round(interactions, atw, list(gid.keys()), (100, 150),
+                                                                (10, 20), (10, 20), (10, 20), (10, 20))
         round_to_interactions_to_earnings[1] = ite
         round_to_agent_to_mine[1] = atm
         round_to_agent_to_wealth[1] = atw.copy()
@@ -84,8 +82,8 @@ class TestingFindingSocialStructures(unittest.TestCase):
                         Theft(a[10], a[3], None), Friendship(a[10], a[13], None), Friendship(a[10], a[12], None),
                         Friendship(a[13], a[12], None), Help(a[12], a[10], None), Mentorship(a[13], a[12], None)]
 
-        ite, atm, atw = TestingFindingSocialStructures.generate_round(interactions, atw, list(gid.keys()), (100, 200),
-                                                                      (15, 25), (15, 25), (15, 25), (15, 25))
+        ite, atm, atw = TestingDetectionSoftware.generate_round(interactions, atw, list(gid.keys()), (100, 200),
+                                                                (15, 25), (15, 25), (15, 25), (15, 25))
         round_to_interactions_to_earnings[2] = ite
         round_to_agent_to_mine[2] = atm
         round_to_agent_to_wealth[2] = atw.copy()
@@ -104,8 +102,8 @@ class TestingFindingSocialStructures(unittest.TestCase):
                         Friendship(a[10], a[12], None), Friendship(a[10], a[13], None), Friendship(a[13], a[12], None),
                         Mentorship(a[12], a[11], None), Help(a[13], a[11], None)]
 
-        ite, atm, atw = TestingFindingSocialStructures.generate_round(interactions, atw, list(gid.keys()), (100, 230),
-                                                                      (20, 40), (20, 40), (20, 40), (20, 40))
+        ite, atm, atw = TestingDetectionSoftware.generate_round(interactions, atw, list(gid.keys()), (100, 230),
+                                                                (20, 40), (20, 40), (20, 40), (20, 40))
         round_to_interactions_to_earnings[3] = ite
         round_to_agent_to_mine[3] = atm
         round_to_agent_to_wealth[3] = atw.copy()
@@ -125,8 +123,8 @@ class TestingFindingSocialStructures(unittest.TestCase):
                         Friendship(a[10], a[13], None), Friendship(a[10], a[11], None), Friendship(a[12], a[11], None),
                         Help(a[11], a[12], None), Help(a[13], a[11], None)]
 
-        ite, atm, atw = TestingFindingSocialStructures.generate_round(interactions, atw, list(gid.keys()), (100, 250),
-                                                                      (20, 50), (25, 60), (5, 15), (5, 15))
+        ite, atm, atw = TestingDetectionSoftware.generate_round(interactions, atw, list(gid.keys()), (100, 250),
+                                                                (20, 50), (25, 60), (5, 15), (5, 15))
         round_to_interactions_to_earnings[4] = ite
         round_to_agent_to_mine[4] = atm
         round_to_agent_to_wealth[4] = atw.copy()
@@ -142,8 +140,8 @@ class TestingFindingSocialStructures(unittest.TestCase):
 
                         Friendship(a[10], a[12], None), Friendship(a[10], a[11], None), Friendship(a[12], a[11], None)]
 
-        ite, atm, atw = TestingFindingSocialStructures.generate_round(interactions, atw, list(gid.keys()), (100, 270),
-                                                                      (20, 55), (20, 55), (20, 55), (20, 55))
+        ite, atm, atw = TestingDetectionSoftware.generate_round(interactions, atw, list(gid.keys()), (100, 270),
+                                                                (20, 55), (20, 55), (20, 55), (20, 55))
         round_to_interactions_to_earnings[5] = ite
         round_to_agent_to_mine[5] = atm
         round_to_agent_to_wealth[5] = atw.copy()
@@ -190,7 +188,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
                     p = lst[random.randrange(len(lst))]
                     lst.remove(p)
                     r = lst[random.randrange(len(lst))]
-                    interaction = TestingFindingSocialStructures.random_interaction(gid[p], gid[r])
+                    interaction = TestingDetectionSoftware.random_interaction(gid[p], gid[r])
                     interactions.append(interaction)
 
             # Add interactions across groups
@@ -203,12 +201,12 @@ class TestingFindingSocialStructures(unittest.TestCase):
                         if p in n:
                             n.remove(p)
                         r = n[random.randrange(len(n))]
-                        interaction = TestingFindingSocialStructures.random_interaction(gid[p], gid[r])
+                        interaction = TestingDetectionSoftware.random_interaction(gid[p], gid[r])
                         interactions.append(interaction)
             round_to_interactions[round] = interactions
         return a, gid, round_to_interactions
 
-    def testA(self):
+    def testSocialStructures(self):
         a, gid, round_to_interactions, rte, ram, raw = self.generate_pre_built_test_environment()
         g = sorted(list(gid.keys()), key=lambda item: int(item))
         social_groups = [[g[0], g[1], g[2], g[3]], [g[5], g[6], g[7], g[8]], [g[10], g[11], g[12]]]
@@ -224,8 +222,12 @@ class TestingFindingSocialStructures(unittest.TestCase):
                     f = True
             self.assertTrue(f, msg=str(group) + " wasn't found")
 
-    def testB(self):
+        # for round in sorted(round_to_interactions.keys()):
+        #     interactions = round_to_interactions[round]
+        #     net = DataAnalysis.get_network(interactions)
+        #     DataAnalysis.draw_network(net)
 
+    def testB(self):
         groups_test = [(['2', '1', '3', '5', '4'], 1, 5),
                         (['13', '12', '14', '11'], 1, 2),
                         (['9', '7', '8', '6'], 1, 3),
@@ -249,6 +251,14 @@ class TestingFindingSocialStructures(unittest.TestCase):
                 count += 1
         print("Found", count," of ", len(social_groups))
         self.assertGreaterEqual(count/len(social_groups), 0.8)
+
+    def testConsistentSocialGroups(self):
+        structures_data_sets = [[(('A', 'L', 'C', 'E'), 1,2), (('C', 'D', 'E'), 2,4), (('C', 'E', 'D'), 3,6)],
+                                [(('A', 'B', 'C'), 1,2), (('C', 'D', 'E','F'), 2,4), (('A', 'L', 'E'), 2,4)],
+                                [(('A', 'L', 'C', 'E'), 1,2), (('A', 'B', 'C'), 1,2), (('C', 'D', 'E','F'), 2,4), (('A', 'L'), 2,4)]]
+
+        a, b, c = SocialAnalysisResult.social_structures_consistency(structures_data_sets)
+        print(Experiment.social_group_map_csv_entry(a))
 
     @staticmethod
     def generate_power_test_environment(agent_to_power, number_of_interactions, total_wealth=10000):
@@ -274,16 +284,16 @@ class TestingFindingSocialStructures(unittest.TestCase):
             a_to_ni[p] -= 1
             a_to_ni[r] -= 1
 
-            interaction = TestingFindingSocialStructures.random_interaction(gid[p], gid[r])
+            interaction = TestingDetectionSoftware.random_interaction(gid[p], gid[r])
             interactions.append(interaction)
 
         return interactions, a_to_wealth
 
     @staticmethod
     def get_power_metric(agent_to_power, total_number_of_interactions=300):
-        interactions, a_to_wealth = TestingFindingSocialStructures.generate_power_test_environment(agent_to_power,
-                                                                                                   total_number_of_interactions)
-        power = SocialAnalysis.power_distribution(interactions, agent_earnings=a_to_wealth)
+        interactions, a_to_wealth = TestingDetectionSoftware.generate_power_test_environment(agent_to_power,
+                                                                                             total_number_of_interactions)
+        power = SocialAnalysis.power_distribution(interactions, agent_earnings=a_to_wealth, should_draw=True)
         metric = PowerMetrics(power)
         return metric
 
@@ -309,6 +319,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
         return round_to_agent_to_power
 
     def test_power_stability(self):
+        return None
         agents = [str(i) for i in range(1,11)]
         dic = {'1': 5, '2': 30, '3': 55, '4': 80, '5': 100, '6': 150, '7': 200, '8': 250, '9': 320, '10': 5000}
         dem = {'1': 100, '2': 100, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
@@ -335,19 +346,22 @@ class TestingFindingSocialStructures(unittest.TestCase):
         print(PowerStability.merge([x.stability_info,y.stability_info, z.stability_info]))
 
     def testPowerDistributions(self):
+        return None
         # Testing dictatorship
         p = { '1': 5, '2': 30, '3': 55, '4': 80, '5': 100, '6': 150, '7': 200, '8': 250, '9': 320, '10': 5000}
         metric1 = self.get_power_metric(p)
         self.assertEqual(metric1.type_info[0], 'Dictatorship')
+        # print(metric1)
 
         # Testing Democracy
         p = {'1': 100, '2': 100, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
         metric2 = self.get_power_metric(p)
         self.assertEqual(metric2.type_info[0], 'Democracy')
-
+        # print(metric2)
         # Tesing Ruiling Class
         p = {'1': 10, '2': 10, '3': 10, '4': 10, '5': 10, '6': 10, '7': 10, '8': 100, '9': 100, '10': 100}
         metric3 = self.get_power_metric(p)
+        print(metric3)
 
         self.assertEqual(metric3.type_info[0], 'RulingClass')
 
@@ -355,14 +369,23 @@ class TestingFindingSocialStructures(unittest.TestCase):
         p = {'1': 5, '2': 5, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
         metric4 = self.get_power_metric(p)
         self.assertEqual(metric4.type_info[0], 'ServantClass')
+        print(metric4)
+
+        # Testing ServantClass
+        p = {'1': 10, '2': 100, '3': 100, '4': 100, '5': 100, '6': 100, '7': 100, '8': 100, '9': 100, '10': 100}
+        metric6 = self.get_power_metric(p)
+        print(metric6.type_info)
+        self.assertEqual(metric6.type_info[0], 'Slavery')
+
+
 
         p = {'1': 200, '2': 203, '3': 199, '4': 202, '5': 200, '6': 197, '7': 205, '8': 203, '9': 198, '10': 202}
         metric5 = self.get_power_metric(p)
 
-        print(metric2.type_info)
-        print(metric4.type_info)
-        print(metric1.type_info)
-        print(PowerMetrics.merge([metric2.type_info, metric4.type_info, metric1.type_info]))
+        # print(metric2.type_info)
+        # print(metric4.type_info)
+        # print(metric1.type_info)
+        # print(PowerMetrics.merge([metric2.type_info, metric4.type_info, metric1.type_info]))
 
     @staticmethod
     def generate_hierarchy(agents, number_of_rounds, stability):
@@ -408,7 +431,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
         return tot, most_stable_hierarchy
 
     def testHierarchyStability(self):
-
+        return None
         agents = [str(i) for i in range(1,10)]
         rtv = self.generate_hierarchy(agents, 10, 0.5)
 
@@ -429,6 +452,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
         return gid, a
 
     def testingIntroducedWealth(self):
+       return None
        gid, a = self.random_agents(3)
        ite = {}
        ite[Friendship(a[0], a[1], None)] = [10, 10]
@@ -454,6 +478,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
        self.assertEqual(iw, 20)
 
     def testingGroupMetrics(self):
+        return None
         gid, a = self.random_agents(3)
         ite = {}
         ite[Friendship(a[0], a[1], None)] = [10, 10]
@@ -473,7 +498,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
 
     @staticmethod
     def generate_group_ite():
-        gid, a = TestingFindingSocialStructures.random_agents(9)
+        gid, a = TestingDetectionSoftware.random_agents(9)
 
         atm = {a:random.randrange(40,120) for a in gid}
         ite = {}
@@ -513,9 +538,24 @@ class TestingFindingSocialStructures(unittest.TestCase):
         return ite, [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']], ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 
     def testingSocialGroupsAsInteractions(self):
+        return None
+        a, gid, round_to_interactions, rte, ram, raw = self.generate_pre_built_test_environment()
+        g = sorted(list(gid.keys()), key=lambda item: int(item))
+        social_groups = [[g[0], g[1], g[2], g[3]], [g[5], g[6], g[7], g[8]], [g[10], g[11], g[12]]]
 
-        ite, groups, aids = self.generate_group_ite()
-        itge = SocialAnalysis.social_groups_as_interactions(ite, groups, aids)
+        print(social_groups)
+
+        round = 1
+        interactions = round_to_interactions[round]
+        ite = rte[round]
+
+        SocialAnalysis.draw_network(SocialAnalysis.get_network(list(ite.keys())))
+
+        itge = SocialAnalysis.social_groups_as_interactions(ite, social_groups, g)
+
+        SocialAnalysis.draw_network(SocialAnalysis.get_network(list(itge.keys())))
+
+
 
         res = SocialAnalysis.limit_interactions_to_agents(list(ite.keys()), ['1', '2', '3'])
 
@@ -526,6 +566,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
         print("Result", result)
 
     def testing_combinations(self):
+        return None
         n= 32
         combinations = Experiment.spread_out_combinations(n)
         for c in combinations:
@@ -537,7 +578,7 @@ class TestingFindingSocialStructures(unittest.TestCase):
             self.assertEqual(12, len(combinations[i]))
 
     def testing_consistent_social_structures(self):
-
+        return None
         groupA = [ (['A', 'D', 'B'], 1, 2), (['F', 'B', 'C', 'E'], 1, 2),  (['A', 'M', 'C'], 1, 2),
                    (['N', 'O', 'P'], 1, 2)]
         groupB = [ (['A', 'F', 'B', 'H'], 1, 2), (['F', 'B', 'L', 'E'], 1, 2),  (['A', 'K', 'C'], 1, 2),
@@ -546,39 +587,66 @@ class TestingFindingSocialStructures(unittest.TestCase):
 
         print(SocialAnalysisResult.social_structures_consistency([groupA, groupC, groupA]))
 
-    def testing_integration_with_simulation(self):
+    def get_combos(self):
 
+        all_combos = []
+        # RI*MH TW*ML I*HL CF*HH (X3) [Missing: (I*HH, TW*ML)
+        all_combos.append([('RI', 'M', 'H'), ('TW', 'M', 'L'), ('I', 'H', 'L'), ('CF', 'H', 'H')] * 3)
+
+        # CF*HH TW*ML I*HH I*HL (X3) [Missing: (RI*MH, TW*LL)
+        all_combos.append([('CF', 'H', 'H'), ('TW', 'M', 'L'), ('I', 'H', 'H'), ('I', 'H', 'L')] * 3)
+
+        # RI*MH TW*ML I*HL I*HH TW*LL (X2) (Found) [Missing: CF*HH, I*HL)
+        all_combos.append([('RI', 'M', 'H'), ('TW', 'M', 'L'), ('I', 'H', 'H'), ('TW', 'L', 'L')] * 2)
+
+        # RI*MH TW*ML I*HL CF*HH I*HH TW*LL (X2) (Found) [Missing:)
+        all_combos.append([('RI', 'M', 'H'), ('TW', 'M', 'L'), ('I', 'H', 'L'), ('CF', 'H', 'H'), ('I', 'H', 'H'),
+                           ('TW', 'L', 'L')] * 2)
+
+        return all_combos;
+
+    def testing_integration_with_simulation(self):
         # Testing you can acquire static agents from runs
 
-        combinations = Experiment.spread_out_combinations(3)
+        combinations = self.get_combos()
+
         complete = []
-        for i in range(3):
+        for i in range(len(combinations)):
             current_position = i
             run = combinations[current_position]
             agentIDs = [(belbin + "*" + mine + appr) for (belbin, mine, appr) in run]
             print("AIDS", agentIDs)
             training_directory = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/training"
 
-            static_agents = Experiment.get_training_agents(training_directory, [], agentIDs)[0]
-            print("Static", [(a, type(a)) for a in static_agents])
+            # static_agents = Experiment.get_training_agents(training_directory, [], agentIDs)[0]
+
+
+            #print("Static", [(a, type(a)) for a in static_agents])
 
             # learning_agents = Experiment.get_training_agents(training_directory, agentIDs, [])[0]
             # print("Learning", [(a, type(a)) for a in learning_agents])
 
-            agents = [agent.generation_id for agent in static_agents]
+            # agents = [agent.generation_id for agent in agents]
             # Running simulation with learning agents test
             results = []
 
             for i in range(3):
-                gui_requests, hierarchy, training, social_analysis = RunningSimulation.simulate(static_agents,
+                agents = Experiment.get_training_agents(training_directory, agentIDs, [])[0]
+
+                print([(a.name, a.generation_id, a.id) for a in agents])
+
+                gui_requests, hierarchy, training, social_analysis = RunningSimulation.simulate(agents,
                                                                                                 should_display=False,
                                                                                                 should_upload=False,
                                                                                                 should_social_analyse=True)
-                results.append(social_analysis.get_data())
+                data = social_analysis.get_data()
+                results.append(data)
+                print(i, "-",  data)
 
-            complete.append((results, agents, i))
+            print("MERGED:", SocialAnalysisResult.merge(results))
 
-        experiment_folder = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/testexperiment"
+
+        experiment_folder = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/texp"
         with open(experiment_folder + "/test_results.json", 'w') as fp:
             json.dump(complete, fp)
 
@@ -586,12 +654,8 @@ class TestingFindingSocialStructures(unittest.TestCase):
 
     @staticmethod
     def generate_full_environment(groups, number_of_agents, number_of_rounds):
-        a, gid, round_to_interactions = TestingFindingSocialStructures.generate_test_environment(groups,
-                                                                                                 number_of_agents,
-                                                                                                 number_of_rounds)
-
-
-
+        a, gid, round_to_interactions = TestingDetectionSoftware.generate_test_environment(groups, number_of_agents,
+                                                                                           number_of_rounds)
 
     def test_experiment(self):
         f = "/Users/faithnyota1/Computer Science/3rd Year/Individual Project/Analysis/testexperiment"

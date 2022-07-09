@@ -1,4 +1,4 @@
-from src.SocialGroupGUI import *
+from src.Display.SocialGroupGUI import *
 import threading
 
 

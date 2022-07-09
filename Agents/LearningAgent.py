@@ -1,5 +1,6 @@
-from src.Agent import *
+from src.Agents.Agent import *
 import functools
+from src.Helper import *
 
 
 class LearningAgent(Agent):
@@ -8,13 +9,15 @@ class LearningAgent(Agent):
 
     # Q matrix:[competency state: 10][round state: 10][agent variables: 8][agent level: 5][interaction choice: 9]
 
-    def __init__(self, name, competency, personality, generation_id=None, is_training=True, long_term_round_count=5, q_array_sizes=[10, 10, 8, 5, 9], Q=None, discount=0.85, gamma=0.9, alpha=0.4, interaction_threshold = 0.2):
+    def __init__(self, name, competency, personality, generation_id=None, is_training=True, long_term_round_count=5, q_array_sizes=[10, 10, 8, 5, 9], Q=None, discount=0.85, gamma=0.9, alpha=0.4, interaction_threshold=0.2):
         super(LearningAgent, self).__init__(name, competency, personality, generation_id)
         # q_array_sizes: [#competency state][#round states][#agent variables][#agent level][#interaction choice]
         self.q_array_sizes = q_array_sizes
         # initalise Q with zeros
         self.Q = Q
         if self.Q is None:
+            # Q matrix:[competency state: 10][round state: 10][other agent variables: 8][other agent level: 5][interaction choice: 9]
+            # q_array_sizes = [10, 10, 8, 5, 9]
             self.Q = np.array(np.zeros(q_array_sizes))
         # this agent's earnings each round
         self.my_earnings_each_round = []
@@ -149,7 +152,6 @@ class LearningAgent(Agent):
         # Format: Type IsProactive IsPick Probability Agent
         # print("Learn", interaction, start, finish)
         # print("Keys", list(self.action_probabilities[start].keys()))
-        # print("Bro", self.action_probabilities)
         probabilities = self.action_probabilities[start][str(interaction.id)]
 
         is_proactive = (interaction.proactive_agent.generation_id == self.generation_id)

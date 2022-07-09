@@ -1,5 +1,5 @@
 import mysql.connector
-from src.GoldMiningEnvironment import *
+from src.environment.GoldMiningEnvironment import *
 
 
 class Analysis:

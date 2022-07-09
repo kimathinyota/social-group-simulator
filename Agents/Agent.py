@@ -1,9 +1,6 @@
-from src.Helper import *
-import time
-import uuid
-from src.GoldMiningEnvironment import *
-
+from src.environment.GoldMiningEnvironment import *
 import threading
+from src.Helper import *
 
 
 class Competency:
@@ -123,7 +120,6 @@ class Agent:
         self.wealth = 0
 
         self.access_interactions_lock = threading.Lock()
-        self.interactions = {Friendship:[[],[]], Mentorship:[[],[]], Help:[[],[]], Theft:[[],[]]}
 
         # list of all agents this agent is currently interacting with
         self.interacting_agents = []
@@ -138,20 +134,22 @@ class Agent:
         self.is_running = None
 
         self.access_pending_interactions_lock = threading.Lock()
-
-        self.current_round = 0
-
-        self.is_in_prison = None
-        self.caught_thefts_in_this_round = []
-
         # Interactions = { Friendship, Mentorship, Help, Theft}
         # Agent -> Interactions -> Type -> ([Agent is Proactive], [Agent is Reactive])
 
-        # memory of the agent - stores information about other agents
-        # NoRounds = number of shared interaction rounds
-        # Agent -> Wealth, Personality, Competency, Interactions, NoRounds
-
+        # MEMORY: stores information about other agents
+        # agent_information: Agent -> Wealth, Personality, Competency,
+        #                             Interactions, NoRounds
+        # NoRounds = total number of rounds where they were both present
         self.access_agent_information_lock = threading.Lock()
+
+        # interactions: InteractionType -> ([<Proactive>], [<Reactive>])
+        # [<Proactive>] = all interactions where this agent is the proactive agent
+        self.interactions = {Friendship: [[], []], Mentorship: [[], []], Help: [[], []],
+                             Theft: [[], []]}
+        self.is_in_prison = None
+        self.caught_thefts_in_this_round = []
+        self.current_round = 0
         self.agent_information = {}
         self.round_to_mining_earnings = {}
 
@@ -247,7 +245,6 @@ class Agent:
         self.environment.notify_wealth_increase(amount, self, should_notify_all=should_notify_all, should_display=should_display, should_notify_environment=should_notify_environment)
         if interaction_id is not None:
             self.add_interaction_earnings(interaction_id, amount)
-
 
     def number_of_times_stolen_from_me(self, agent):
         reactive_thefts = self.interactions[Theft][1].copy()
@@ -351,7 +348,7 @@ class Agent:
         # f = forgiveness
         f = self.forgiveness()
 
-        return 0.5 + (1/40)*(2*B + (1/n)*(10*A + 5*C + 2*F + G) - (1-0.9*f)*(17*D/n + E/(p*n)) )
+        return 0.5 + (1/40)*(2*B + (1/n)*(10*A + 5*C + 2*F + G/p) - (1-0.9*f)*(17*D/n + E/(p*n)) )
 
     def caught_stealing(self):
         c = self.personality_template.dimension_percentage(self.personality, 'C')
@@ -436,7 +433,7 @@ class Agent:
         o = (o2 + o3 + h4)/(3*fsm)
         e = (e1 + e2 + e3) / (3 * fsm)
 
-        return (1/4) * (1.5 + o + 1.5*c - 1.5*e)
+        return (1/3) * (o + c - e)
 
     def good_teacher(self, personality):
         good_teacher = self.personality_template.facet_percentage(["A3", "A4", "H2", "H1"], personality)
@@ -449,7 +446,7 @@ class Agent:
         self.access_agent_information_lock.release()
         good_teacher = self.good_teacher(personality)
         teachable = self.teachable(personality)
-        return (1.5 * teachable + good_teacher) / 2.5
+        return (teachable + good_teacher) / 2
 
     def need_mentor(self, mentor, mentoring_cost):
         self.access_agent_information_lock.acquire()

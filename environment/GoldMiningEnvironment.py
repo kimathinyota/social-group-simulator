@@ -1,13 +1,10 @@
-
-import operator
-from abc import ABC, abstractmethod
+from src.DataAnalysis.Analysis import *
 import threading
-
 import time
-from src.Helper import *
-from src.DisplayServer import *
-from src.Testing import *
-from src.Analysis import *
+import operator
+from src.Display.DisplayServer import ServiceGUI
+import src.Helper as helper
+from src.Testing.Testing import *
 
 import uuid
 
@@ -43,7 +40,7 @@ class ResourceMiningEnvironment:
         self.access_earnings_last_lock.release()
         return int(max(0.25*self.minimum_mine, earnt))
 
-    def estimated_mentoring_cost(self,mentee):
+    def estimated_mentoring_cost(self, mentee):
         cost = max(0.25*self.minimum_mine,1)
         if mentee in self.agent_earnings_last_round:
             self.access_earnings_last_lock.acquire()
@@ -290,7 +287,6 @@ class ResourceMiningEnvironment:
 
         self.access_agent_to_all_interactions_lock.acquire()
 
-        #THIS IS THE ERROR
         if agent not in self.agent_to_all_interactions:
             self.access_agent_to_all_interactions_lock.release()
             return []
@@ -479,8 +475,7 @@ class ResourceMiningEnvironment:
 
     def get_mined_amount(self, agent):
         n = agent.current_round - 1
-        # a = n.o rounds for average miner to double the minimum mining
-        a = 7
+        a = 7  # a = n.o rounds for average miner to double the minimum mining
         mine = int(self.minimum_mine * (1 + 2*n*agent.competency.mining_skill/a))
         return mine
 
@@ -622,10 +617,10 @@ class ResourceMiningEnvironment:
 
     def run_test_on_test_variables(self):
         if self.should_test:
-            print("Running tests at end of round")
+            print("Running tests at end of round " + str(self.current_round))
             agent_wealth_at_end = {agent: agent.wealth for agent in self.active_agents}
             agent_competency_at_end = {agent: agent.competency.copy() for agent in self.active_agents}
-
+            # Run all tests for at the end of the interaction window
             testInteraction = TestingInteractionSuite(
                 [interaction for interaction in self.confirmed_interactions if interaction.is_success],
                 self.agent_earnings_last_round.copy(),
@@ -636,7 +631,7 @@ class ResourceMiningEnvironment:
                 self.agent_competency_after_interaction_test,
                 Friendship, Mentorship, Help, Theft,
                 self.minimum_mine, self.get_competency_increase_percentage())
-
+            # Run all tests planned for at the end of the round
             testRound = TestingRoundSuite(
                 [interaction for interaction in self.confirmed_interactions if interaction.is_success],
                 self.agent_earnings_after_mining.copy(),
@@ -712,19 +707,6 @@ class ResourceMiningEnvironment:
 
 class Interaction:
 
-    type = "Interaction"
-
-    @classmethod
-    def type(cls):
-        return type(cls)
-
-    def initiate_interaction(self):
-        pass
-
-    def __repr__(self):
-        cool = self.type + "(" + str(self.proactive_agent) + "," + str(self.reactive_agent) + ")"
-        return cool
-
     def __init__(self, proactive_agent, reactive_agent, single_role, request_bidirectional, requires_acceptance, should_always_notify_all, environment):
         if proactive_agent is None or reactive_agent is None:
             raise ValueError("Interaction given null agent value")
@@ -742,6 +724,19 @@ class Interaction:
         self.is_reactive_busy_during_initiation = self.requires_acceptance
         self.requested_agent = None
         self.access_request_lock = threading.Lock()
+
+    type = "Interaction"
+
+    @classmethod
+    def type(cls):
+        return type(cls)
+
+    def initiate_interaction(self):
+        pass
+
+    def __repr__(self):
+        cool = self.type + "(" + str(self.proactive_agent) + "," + str(self.reactive_agent) + ")"
+        return cool
 
     def reset(self):
         self.requested_agent = None
@@ -1099,7 +1094,7 @@ class Theft(Interaction):
     def determine_if_caught(self):
         if self.is_caught is not None:
             return self.is_caught
-        self.is_caught = random_boolean_variable(self.proactive_agent.caught_stealing())
+        self.is_caught = helper.random_boolean_variable(self.proactive_agent.caught_stealing())
 
         return self.is_caught
 
@@ -1200,7 +1195,7 @@ class MentorshipToken(Token):
         self.mentee = mentee
         self.amount = None
         self.interaction_id = interaction_id
-        if mp and ap is None:
+        if mp is None and ap is None:
             self.p = 0
         else:
             self.p = mp if (mp is not None and (ap is None or ap >= mp)) else ap

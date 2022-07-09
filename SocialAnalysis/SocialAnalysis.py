@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import networkx as nx
-from src.Agent import *
-from src.GoldMiningEnvironment import Friendship, Mentorship, Theft, Help
+from src.Agents.Agent import *
+from src.environment.GoldMiningEnvironment import Friendship, Mentorship, Theft, Help
 from networkx.algorithms.community import k_clique_communities, greedy_modularity_communities
 from networkx.algorithms.community.label_propagation import *
 from src.Helper import *
@@ -228,14 +228,13 @@ class PowerStability:
 
 # Purpose: Have access to all of the analysis data - it can be combined with others in a database to find correlations
 class SocialMetrics:
+    def __init__(self, interactions_to_earnings, agent_to_mined, agents):
+        self.anti_social, self.productivity, self.cooperative, self.friendliness = SocialAnalysis.group_metrics(interactions_to_earnings)
+        self.introduced_gold = SocialAnalysis.introduced_wealth(interactions_to_earnings, agent_to_mined, agents)
 
     def __repr__(self):
-        return str((("Anti-Social", "Productivity", "Cooperation", "Synergy"),
-                    (self.anti_social, self.productivity, self.cooperative, self.introduced_gold)))
-
-    def __init__(self, interactions_to_earnings, agent_to_mined, agents):
-        self.anti_social, self.productivity, self.cooperative = SocialAnalysis.group_metrics(interactions_to_earnings)
-        self.introduced_gold = SocialAnalysis.introduced_wealth(interactions_to_earnings, agent_to_mined, agents)
+        return str((("Anti-Social", "Productivity", "Cooperation", "Friendliness", "Synergy"),
+                    (self.anti_social, self.productivity, self.cooperative, self.friendliness, self.introduced_gold)))
 
 
 class SocialStructureAnalysis:
@@ -318,8 +317,18 @@ class SocialAnalysisResult:
         return str(self.get_data())
 
     @staticmethod
+    def remove_duplicates(groups):
+        gs = []
+        for g in groups:
+            if not contains(gs, g):
+                gs.append(g)
+        return gs
+
+    @staticmethod
     def similar_structures(group1, group2, sim_thresh=0.8):
         # Return (g,g2) pairs with sim > 0.8
+        group1 = SocialAnalysisResult.remove_duplicates(group1)
+        group2 = SocialAnalysisResult.remove_duplicates(group2)
         found_groups = []
         group_found = {}
         first = group1 if len(group1) > len(group2) else group2
@@ -335,46 +344,61 @@ class SocialAnalysisResult:
                     else:
                         found_groups += [g, g2]
         score = sum(group_found.values()) / len(first) if len(first) > 0 else 0
-        return found_groups, score
+        return found_groups, min(score, 1)
+
+    @staticmethod
+    def social_group_tuple(group):
+        gps = [str(g) for g in group]
+        return tuple(list(sorted(gps)))
 
     @staticmethod
     def social_structures_consistency(social_structure_data_sets):
-        # ([A,B,C], [1,2]), ([B,C,D,[1,2])
+        # ([A,B,C], 1,2), ([B,C,D],1,2)
         # Find similar groupings identified in each data set
         groups = [[g[0] for g in group] for group in social_structure_data_sets]
         avg_similarity = 0
         c = 0
-        social_structures = []
-        all_found = [g[0] for groups in social_structure_data_sets for g in groups]
+        social_structures = {}
+
+        for group in social_structure_data_sets:
+            for g in group:
+                l = g[0]
+                r = (g[2] - g[1])
+                lstr = SocialAnalysisResult.social_group_tuple(l)
+                social_structures[lstr] = r if lstr not in social_structures else r + social_structures[lstr]
+
+        # all_found = [g[0] for groups in social_structure_data_sets for g in groups]
+        consistent_groups = {}
         for i in range(len(groups)):
             g = groups[i]
             for j in range(i+1, len(groups)):
                 g2 = groups[j]
                 found, s = SocialAnalysisResult.similar_structures(g, g2)
-                social_structures += [g for g in found if g not in social_structures]
+                for f in found:
+                    consistent_groups[SocialAnalysisResult.social_group_tuple(f)] = ""
                 avg_similarity += s
                 c += 1
         consistency_score = avg_similarity / c if c > 0 else 0
-        return social_structures, consistency_score, all_found
+        return consistent_groups, consistency_score, social_structures
 
     @staticmethod
     def merge(data_set):
-        anti, prod, coop, ig = [], [], [], []
+        anti, prod, coop, frnd, ig = [], [], [], [], []
         power_stability_info = []
         wealth_stability = []
         power_metrics = []
         atv = {}
         atg = {}
         social_structures = []
-        between_average_metrics = [[],[],[],[]]
-        canti, cprod, ccoop, cig = [], [], [], []
+        between_average_metrics = [[],[],[],[], []]
+        canti, cprod, ccoop, cfrnd, cig = [], [], [], [], []
         comp_type_to_count = {'Democracy': 0, 'RulingClass':0, 'ServantClass':0, 'Dictatorship':0, 'Slavery':0, 'None': 0}
         avg_comp_stability = []
 
         for data in data_set:
             sm = data["SocialMetrics"]
-            a, p, c, i = sm
-            anti, prod, coop, ig = anti + [a], prod + [p], coop + [c], ig + [i]
+            a, p, c, f, i = sm
+            anti, prod, coop, frnd, ig = anti + [a], prod + [p], coop + [c], frnd + [f], ig + [i]
             power_stability_info.append(data["PowerStability"])
             wealth_stability.append(data["WealthStability"][0])
             power_metrics.append(data["PowerMetric"])
@@ -389,12 +413,12 @@ class SocialAnalysisResult:
 
             sgm = data["SocialGroupMetrics"]
             avgs, rangs = sgm
-            a, p, c, i = 0, 0, 0, 0
+            a, p, c, f, i = 0, 0, 0, 0, 0
             if avgs is not None:
-                a, p, c, i = avgs
-            al, pl, cl, il = between_average_metrics
-            al, pl, cl, il = al + [a], pl + [p], cl + [c], il + [i]
-            between_average_metrics = [al, pl, cl, il]
+                a, p, c, f, i = avgs
+            al, pl, cl, fl, il = between_average_metrics
+            al, pl, cl, fl, il = al + [a], pl + [p], cl + [c], fl + [f], il + [i]
+            between_average_metrics = [al, pl, cl, fl, il]
 
             gps = data["GroupPowerStability"]
 
@@ -402,19 +426,19 @@ class SocialAnalysisResult:
                 avg_stab, tti = gps
                 avg_comp_stability.append(avg_stab)
                 for t in tti:
-                    comp_type_to_count[t] += 1
+                    comp_type_to_count[t] += tti[t]
             else:
                 avg_comp_stability.append(0)
 
             csm = data["CompetingGroupMetrics"]
             if csm is None:
-                a, p, c, i = 0, 0, 0, 0
+                a, p, c, f, i = 0, 0, 0, 0, 0
             else:
-                a, p, c, i = csm
-            canti, cprod, ccoop, cig = canti + [a], cprod + [p], ccoop + [c], cig + [i]
+                a, p, c, f, i = csm
+            canti, cprod, ccoop, cfrnd, cig = canti + [a], cprod + [p], ccoop + [c], cfrnd + [f], cig + [i]
 
         return {
-            "SocialMetrics": [SocialAnalysis.get_mean_similarity(v) for v in [anti, prod, coop, ig]],
+            "SocialMetrics": [SocialAnalysis.get_mean_similarity(v) for v in [anti, prod, coop, frnd, ig]],
             "PowerStability": PowerStability.merge(power_stability_info),
             "WealthStability": SocialAnalysis.get_mean_similarity(wealth_stability),
             "PowerMetric": PowerMetrics.merge(power_metrics),
@@ -423,12 +447,13 @@ class SocialAnalysisResult:
             "AgentToGroupCount": atg,
             "SocialGroupMetrics": [SocialAnalysis.get_mean_similarity(v) for v in between_average_metrics],
             "GroupPowerStability": [SocialAnalysis.get_mean_similarity(avg_comp_stability), comp_type_to_count],
-            "CompetingGroupMetrics": [SocialAnalysis.get_mean_similarity(v) for v in [canti, cprod, ccoop, cig]]
+            "CompetingGroupMetrics": [SocialAnalysis.get_mean_similarity(v) for v in [canti, cprod, ccoop, cfrnd, cig]]
         }
 
     def get_data(self):
         g = self.general.general_social_metrics
-        return {"SocialMetrics": [g.anti_social, g.productivity, g.cooperative, g.introduced_gold],
+
+        return {"SocialMetrics": [g.anti_social, g.productivity, g.cooperative, g.friendliness, g.introduced_gold],
                 "PowerStability": self.general.power_stability.stability_info,
                 "WealthStability": self.general.wealth_stability_info,
                 "PowerMetric": self.general.general_power_metric.type_info,
@@ -485,8 +510,8 @@ class SocialAnalysisResult:
             # Within Social Structure Analysis
             avg_group_stab = 0
             avg_type_to_info = {'Democracy': 0, 'RulingClass':0, 'ServantClass':0, 'Dictatorship':0, 'Slavery':0, 'None': 0}
-            avg_anti, avg_prod, avg_coop, avg_synergy = 0, 0, 0, 0
-            antis, coops, prods, synergys = [], [], [], []
+            avg_anti, avg_prod, avg_coop, avg_frnd, avg_synergy = 0, 0, 0, 0, 0
+            antis, coops, prods, frnds, synergys = [], [], [], [], []
             for struct in self.social_structures:
                 group, start, end = struct
                 avg_group_stab += (end - start)/(end_round - start_round)
@@ -496,11 +521,13 @@ class SocialAnalysisResult:
                 avg_anti += sm.anti_social/len(self.social_structures)
                 avg_coop += sm.cooperative/len(self.social_structures)
                 avg_prod += sm.productivity/len(self.social_structures)
+                avg_frnd += sm.friendliness/len(self.social_structures)
                 avg_synergy += sm.introduced_gold/len(self.social_structures)
 
                 antis.append(sm.anti_social)
                 coops.append(sm.cooperative)
                 prods.append(sm.productivity)
+                frnds.append(sm.friendliness)
                 synergys.append(sm.introduced_gold)
 
                 for agent in group:
@@ -519,9 +546,10 @@ class SocialAnalysisResult:
 
             self.average_power_stability = [avg_group_stab, avg_type_to_info]
 
-            self.between_social_average_metrics = [avg_anti, avg_prod, avg_coop, avg_synergy]
-            self.between_social_range_metrics = [max(antis) - min(antis), max(prods) - min(prods), max(coops) - min(coops),
-                      max(synergys) - min(synergys)]
+            self.between_social_average_metrics = [avg_anti, avg_prod, avg_coop, avg_frnd, avg_synergy]
+            self.between_social_range_metrics = [max(antis) - min(antis), max(prods) - min(prods),
+                                                 max(coops) - min(coops), max(frnds) - min(frnds),
+                                                 max(synergys) - min(synergys)]
 
             # Competing
             self.competing_social_analysis = CompetingSocialStructureAnalysis(self.social_structures,
@@ -537,8 +565,7 @@ class SocialAnalysisResult:
                 percent, type_to_info = psi
                 self.competing_power_stability_counts = {t: type_to_info[t][3] for t in type_to_info}
                 self.competing_power_stability_percentage = percent
-            self.competing_social_metrics = [csm.anti_social, csm.productivity, csm.cooperative, csm.introduced_gold]
-
+            self.competing_social_metrics = [csm.anti_social, csm.productivity, csm.cooperative, csm.friendliness, csm.introduced_gold]
 
 
 class SocialAnalysis:
@@ -548,7 +575,7 @@ class SocialAnalysis:
         if len(values) == 0:
             return None, None
         mean, std = SocialAnalysis.get_mean_range(values)
-        return mean, (1 - std/mean) if mean > 0 else 1
+        return mean, (1 - min(abs(std/mean), 1)) if mean > 0 else 1
 
     @staticmethod
     def get_mean_range(values):
@@ -572,7 +599,6 @@ class SocialAnalysis:
                 most_stable_hierarchy = atv
             tot += p
         return tot, most_stable_hierarchy
-
 
     @staticmethod
     def get_network(interactions, interaction_to_weight={}, default_weight=1):
@@ -674,6 +700,15 @@ class SocialAnalysis:
         return [(res,start,end) for (res,start,end) in result if (end-start) >= stability_thresh]
 
     @staticmethod
+    def draw_network(network):
+        pos = nx.nx_agraph.graphviz_layout(network)
+        nx.draw(network, pos, with_labels=True)
+        edge_labels = nx.get_edge_attributes(network, 'r')
+        edge_labels = {(e[0], e[1]): edge_labels[e] for e in edge_labels}
+        nx.draw_networkx_edge_labels(network, pos, edge_labels=edge_labels)
+        plt.show()
+
+    @staticmethod
     def power_distribution(interactions, interaction_to_weight={}, default_weight=1, agent_earnings={}, should_draw=False):
         # For each round of interactions
         # Look at centrality of each agent involved in interaction
@@ -685,12 +720,7 @@ class SocialAnalysis:
         earnings = {a: agent_earnings[a]/tot for a in agent_earnings}
         power = {a: ((earnings[a] if a in earnings else 0) + centrality[a])/2 for a in centrality}
         if should_draw:
-            pos = nx.spring_layout(network)
-            nx.draw(network, pos, with_labels=True)
-            edge_labels = nx.get_edge_attributes(network, 'r')
-            edge_labels = {(e[0], e[1]): edge_labels[e] for e in edge_labels}
-            nx.draw_networkx_edge_labels(network, pos, edge_labels=edge_labels)
-            plt.show()
+            SocialAnalysis.draw_network(network)
         return power
 
     @staticmethod
@@ -715,7 +745,6 @@ class SocialAnalysis:
 
         earnings = {agent.generation_id: random.randrange(10, 75) for agent in agents}
 
-        print("Yeet", earnings)
 
         for i in range(int(0.2*len(agents) * len(agents))):
             a = agents[random.randrange(len(agents))]
@@ -787,8 +816,9 @@ class SocialAnalysis:
         total = tf + tm + th + tt
         asocial = 0 if total == 0 else tt / total
         productivity = 0 if total == 0 else tm / total
-        coop = 0 if total == 0 else (tf + th) / total
-        return asocial, productivity, coop
+        coop = 0 if total == 0 else th / total
+        f = 0 if total == 0 else tf / total
+        return asocial, productivity, coop, f
 
     @staticmethod
     def to_hierarchy(round_to_agent_to_wealth):

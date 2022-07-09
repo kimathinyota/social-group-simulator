@@ -1,8 +1,7 @@
 
-from src.Agent import *
-from src.DisplayServer import *
-from src.GoldMiningEnvironment import *
-
+from src.Agents.Agent import *
+from src.environment.GoldMiningEnvironment import *
+from src.Display.DisplayServer import SocialGroupGUI
 import threading
 
 
@@ -74,6 +73,7 @@ def main2():
     start_environment2(environment)
     requests = environment.run()
     gui = SocialGroupGUI(1400, 800)
+    # gui.display()
 
     for request in requests:
         ServiceGUI.process_request(gui, request)
@@ -84,8 +84,6 @@ def main3():
     start_environment2(environment)
     requests = environment.run()
     gui = SocialGroupGUI(1400, 800)
-
-
 
     agents = []
     prison = []
@@ -111,9 +109,18 @@ def main3():
     gui.display(100,30)
 
 
+def main4():
+    environment = ResourceMiningEnvironment(10000, 10, 40)
+    start_environment2(environment)
+    requests, analysis, round_to_hierarchy, training, round_to_interactions_to_earnings, round_to_agent_to_mine = environment.run()
+    gui = SocialGroupGUI(1400, 800)
+    for request in requests:
+        ServiceGUI.process_request(gui, request)
+    gui.display(100, 30)
+
 
 if __name__ == "__main__":
-    main2()
+    main4()
 
 
 def random_agent(name):

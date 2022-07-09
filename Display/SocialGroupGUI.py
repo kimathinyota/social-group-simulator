@@ -1,15 +1,11 @@
 import operator
 import random
-from src.graphics import *
+from src.Display.graphics import *
 import math
-import src.GoldMiningEnvironment as environ
+import src.environment.GoldMiningEnvironment as environ
 import src.Helper as helper
 import enum
 from decimal import Decimal
-
-
-
-
 
 
 class SocialGroupGUI:

@@ -1,4 +1,4 @@
-from src.Agent import *
+from src.Agents.Agent import *
 from src.InformalSocialGroup import *
 import random
 

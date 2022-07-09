@@ -2,6 +2,7 @@ from scipy import spatial
 import random
 import math
 import numpy as np
+import collections
 
 
 class PersonalityTemplate:
@@ -37,7 +38,6 @@ class PersonalityTemplate:
                     personality[fd] = value
 
         return personality
-
 
     def dimension_total(self, personality, dimension_letter):
         tot = 0
@@ -153,8 +153,6 @@ class HexacoPersonality(PersonalityTemplate):
             "O4": 50,
         }
 
-
-
     def text(self, personality):
         text = ""
         for j in range(len(self.dimensions)):
@@ -230,6 +228,14 @@ def apply_prob_distribution(score, start_prob, score_dif, prob_incr):
 
 def random_boolean_variable(probability):
     return random.random() < probability
+
+
+def contains(lists_of_lists, list):
+    counter = collections.Counter(list)
+    for a in lists_of_lists:
+        if collections.Counter(a) == counter:
+            return True
+    return False
 
 
 def accuracy_value(value, accuracy):
