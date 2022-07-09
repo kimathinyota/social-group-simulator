@@ -125,9 +125,7 @@ Exchange networks of social groups (treated as a single node) can be created to 
 Any interaction occurring from an agent in one social group to an agent in another social group is treated as an interaction between those two social groups. 
 
 
-## Identifying social phenomena
-
-
+## References
 <a name="myfootnote1">[1]</a>: Whitworth, B. and Sylla, C., 2012. A social environmental model of socio-technical performance. International Journal of Networking and Virtual Organisations, 11(1), p.1. <br/>
 <a name="myfootnote2">[2]</a>: Cook, K., Emerson, R., Gillmore, M. and Yamagishi, T., 1983. The Distribution of Power in Exchange Networks: Theory and Experimental Results. American Journal of Sociology, 89(2), pp.275-305.
 
