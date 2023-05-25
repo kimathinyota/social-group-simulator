@@ -44,7 +44,7 @@ In sociology, the social exchange theory argues that any social phenomena, e.g. 
 4. **Theft**, where a thief can steal 30% of the money earnt by the victim in the last round, but will not be able to participate in the next round if caught.
 
 This game was constructed to emulate the following Social Environment Model<sup>[1](#myfootnote1)</sup>
-![](Images/Social Environment Model.png)
+![](Images/Social\ Environment\ Model.png)
 
 
 ## Agents
@@ -70,10 +70,10 @@ Agents are designed to emulate people playing this game and have the following a
   * to acquire more wealth through the process of mining. 
 
 ### Diagram showing how agent interact with the environment
-![](Images/Agent and Environment.png)
+![](Images/Agent\ and\ Environment.png)
 
 ### Diagram showing how agents interact with each other and the environment
-![](Images/Class Diagram.png)
+![](Images/Class\ Diagram.png)
 
 
 ## Displaying the Simulation
